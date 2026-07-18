@@ -6,11 +6,10 @@ import {
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { JwtService } from '@nestjs/jwt';
-import { InjectRedis } from '@nestjs-modules/ioredis';
-import { Redis } from 'ioredis';
 import { Request } from 'express';
 import { buildAdminAccessTokenSessionRedisKey } from 'src/api/admin/admin.constants';
 import { IS_PUBLIC_KEY } from 'src/api/admin/decorators';
+import { LocalKvService } from 'src/common/cache';
 import { AuthenticatedRequest, UserSchema } from '../types/request.types';
 
 @Injectable()
@@ -19,7 +18,7 @@ export class AdminGuard implements CanActivate {
   constructor(
     private jwtService: JwtService,
     private reflector: Reflector,
-    @InjectRedis() private readonly redis: Redis,
+    private readonly kv: LocalKvService,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -54,19 +53,19 @@ export class AdminGuard implements CanActivate {
       }
 
       const user = validationResult.data;
-      // 带 jti 的 accessToken：须 Redis 会话仍存在（被踢下线 / 全量撤销 / 自然过期后键消失则拒绝）
+      // 带 jti 的 accessToken：须会话仍存在（被踢下线 / 全量撤销 / 自然过期后键消失则拒绝）
       const jti = user.jti;
       if (typeof jti === 'string' && jti.length > 0) {
         const sessionKey = buildAdminAccessTokenSessionRedisKey(user.id, jti);
         try {
-          const exists = await this.redis.exists(sessionKey);
+          const exists = await this.kv.exists(sessionKey);
           if (!exists) {
             throw new UnauthorizedException('登录已失效，请重新登录！');
           }
         } catch (e) {
           if (e instanceof UnauthorizedException) throw e;
           console.warn(
-            'AdminGuard Redis 会话校验异常，已降级放行:',
+            'AdminGuard 会话校验异常，已降级放行:',
             (e as Error)?.message ?? e,
           );
         }

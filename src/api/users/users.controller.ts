@@ -13,8 +13,7 @@ import { UpdateUserDto } from './dto/update-user.dto';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { InjectRedis } from '@nestjs-modules/ioredis';
-import { Redis } from 'ioredis';
+import { LocalKvService } from 'src/common/cache';
 
 @Controller('users')
 @ApiTags('用户管理')
@@ -24,7 +23,7 @@ export class UsersController {
   constructor(
     private readonly usersService: UsersService,
     private configService: ConfigService,
-    @InjectRedis() private readonly redis: Redis,
+    private readonly kv: LocalKvService,
   ) {}
 
   @Post()
@@ -42,8 +41,7 @@ export class UsersController {
     description: '返回所有用户账户列表，需要管理员权限',
   })
   async findAll() {
-    // const databaseHost = this.configService.get<string>('DB_TYPE','mysql'); // 获取环境变量的数据库类型
-    await this.redis.set('key', JSON.stringify('value'), 'EX', 60);
+    await this.kv.set('key', JSON.stringify('value'), 60);
     return this.usersService.findAll();
   }
 

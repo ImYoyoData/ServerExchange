@@ -2,8 +2,6 @@ import { Injectable, Logger, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { InjectRepository } from '@nestjs/typeorm';
 import { randomUUID } from 'crypto';
-import { InjectRedis } from '@nestjs-modules/ioredis';
-import { Redis } from 'ioredis';
 import { In, Like, Repository } from 'typeorm';
 import { Admin } from './entities/admin.entity';
 import { BusinessPass, BusinessRejectedException } from 'src/common/exceptions';
@@ -19,6 +17,7 @@ import { CreateAdminDto } from './dto/create-admin.dto';
 import { UpdateAdminDto } from './dto/update-admin.dto';
 import { QueryAccessTokenSessionsDto } from './dto/query-access-token-sessions.dto';
 import { FileService } from './file/file.service';
+import { LocalKvService } from 'src/common/cache';
 import {
   ADMIN_ACCESS_TOKEN_SESSION_KEY_PREFIX,
   buildAdminAccessTokenSessionRedisKey,
@@ -65,10 +64,10 @@ export class AdminService {
     @InjectRepository(Role) private roleRepository: Repository<Role>,
     @InjectRepository(RoleMenu)
     private readonly roleMenuRepository: Repository<RoleMenu>,
-    @InjectRedis() private readonly redis: Redis,
+    private readonly kv: LocalKvService,
   ) {}
 
-  /** 与 Redis 中 accessToken 会话 key 一致：`admin:accessToken:{userId}:{jti}` */
+  /** 与本地 KV 中 accessToken 会话 key 一致：`admin:accessToken:{userId}:{jti}` */
   buildAccessTokenSessionRedisKey(userId: number, jti: string): string {
     return buildAdminAccessTokenSessionRedisKey(userId, jti);
   }
@@ -88,24 +87,11 @@ export class AdminService {
   }
 
   private async scanRedisKeys(match: string): Promise<string[]> {
-    const out: string[] = [];
-    let cursor = '0';
-    do {
-      const [next, keys] = await this.redis.scan(
-        cursor,
-        'MATCH',
-        match,
-        'COUNT',
-        500,
-      );
-      cursor = next;
-      out.push(...keys);
-    } while (cursor !== '0');
-    return out;
+    return this.kv.keys(match);
   }
 
   /**
-   * 将本次 accessToken 会话写入 Redis（每用户可多条，键独立 TTL 与 accessToken 一致）
+   * 将本次 accessToken 会话写入本地 KV（每用户可多条，键独立 TTL 与 accessToken 一致）
    */
   private async cacheAccessTokenSession(
     userId: number,
@@ -115,23 +101,25 @@ export class AdminService {
   ): Promise<void> {
     if (!Number.isFinite(ttlSeconds) || ttlSeconds <= 0) return;
     const key = this.buildAccessTokenSessionRedisKey(userId, jti);
+    const now = Date.now();
     const value = JSON.stringify({
       typ: 'admin_access',
       username: meta.username,
       device: meta.device ?? '',
-      ts: Date.now(),
+      ts: now,
+      expiresAt: now + ttlSeconds * 1000,
     });
     try {
-      await this.redis.set(key, value, 'EX', ttlSeconds);
+      await this.kv.set(key, value, ttlSeconds);
     } catch (e) {
       this.logger.warn(
-        `Redis 写入 accessToken 会话失败: ${String((e as Error)?.message ?? e)}`,
+        `写入 accessToken 会话失败: ${String((e as Error)?.message ?? e)}`,
       );
     }
   }
 
   /**
-   * 分页查询 Redis 中仍存在的 accessToken 会话（键未过期即视为有效），按用户聚合，子级为各 jti 会话
+   * 分页查询本地 KV 中仍存在的 accessToken 会话（键未过期即视为有效），按用户聚合，子级为各 jti 会话
    */
   async pageAccessTokenSessions(queryDto: QueryAccessTokenSessionsDto) {
     const page = Number(queryDto.page) || 1;
@@ -177,55 +165,52 @@ export class AdminService {
 
     const sessions: SessionRow[] = [];
     const chunkSize = 80;
+    const now = Date.now();
 
     for (let i = 0; i < keys.length; i += chunkSize) {
       const chunk = keys.slice(i, i + chunkSize);
-      const pipe = this.redis.pipeline();
-      for (const k of chunk) {
-        pipe.get(k);
-        pipe.ttl(k);
-      }
-      const execed = await pipe.exec();
-      if (!execed) continue;
+      const values = await this.kv.mget<string>(chunk);
 
       for (let j = 0; j < chunk.length; j++) {
         const key = chunk[j];
         const parsed = this.parseAccessTokenSessionRedisKey(key);
         if (!parsed) continue;
 
-        const ttlRaw = execed[j * 2 + 1]?.[1];
-        const ttlSeconds = typeof ttlRaw === 'number' ? ttlRaw : Number(ttlRaw);
-        if (ttlSeconds === -2) continue;
-
-        const rawGet = execed[j * 2]?.[1];
-        const getRes = typeof rawGet === 'string' ? rawGet : null;
+        const rawGet = values[j];
+        if (rawGet == null) continue;
 
         let username = '';
         let device = '';
         let ts = 0;
-        if (getRes) {
-          try {
-            const obj = JSON.parse(getRes) as {
-              username?: string;
-              device?: string;
-              ts?: number;
-            };
-            if (typeof obj.username === 'string') username = obj.username;
-            if (typeof obj.device === 'string') device = obj.device;
-            if (typeof obj.ts === 'number') ts = obj.ts;
-          } catch {
-            // ignore
+        let ttlSeconds = 0;
+        try {
+          const obj = (
+            typeof rawGet === 'string' ? JSON.parse(rawGet) : rawGet
+          ) as {
+            username?: string;
+            device?: string;
+            ts?: number;
+            expiresAt?: number;
+          };
+          if (typeof obj.username === 'string') username = obj.username;
+          if (typeof obj.device === 'string') device = obj.device;
+          if (typeof obj.ts === 'number') ts = obj.ts;
+          if (typeof obj.expiresAt === 'number' && obj.expiresAt > now) {
+            ttlSeconds = Math.max(0, Math.floor((obj.expiresAt - now) / 1000));
+          } else if (typeof obj.expiresAt === 'number' && obj.expiresAt <= now) {
+            continue;
           }
+        } catch {
+          // ignore
         }
 
-        const ttlNorm = ttlSeconds >= 0 ? ttlSeconds : 0;
         sessions.push({
           userId: parsed.userId,
           jti: parsed.jti,
           username,
           device,
           ts,
-          ttlSeconds: ttlNorm,
+          ttlSeconds,
         });
       }
     }
@@ -338,7 +323,7 @@ export class AdminService {
     );
   }
 
-  /** 使指定用户指定 jti 的 accessToken 会话失效（删除 Redis 记录） */
+  /** 使指定用户指定 jti 的 accessToken 会话失效（删除会话记录） */
   async revokeUserAccessTokenSession(
     userId: number,
     jti: string,
@@ -348,12 +333,12 @@ export class AdminService {
     const uid = Number(userId);
     if (!Number.isFinite(uid) || uid <= 0) return false;
     const key = this.buildAccessTokenSessionRedisKey(uid, j);
-    const n = await this.redis.del(key);
+    const n = await this.kv.del(key);
     return n > 0;
   }
 
   /**
-   * 使用户在 Redis 中的全部 accessToken 会话失效（删除该用户下所有会话键）。
+   * 使用户全部 accessToken 会话失效（删除该用户下所有会话键）。
    * 其他 Service 可注入 AdminService 后调用；禁用用户时也会调用。
    */
   async revokeAllUserAccessTokenSessions(userId: number): Promise<number> {
@@ -362,7 +347,7 @@ export class AdminService {
     const pattern = `${ADMIN_ACCESS_TOKEN_SESSION_KEY_PREFIX}:${uid}:*`;
     const keys = await this.scanRedisKeys(pattern);
     if (keys.length === 0) return 0;
-    const n = await this.redis.del(...keys);
+    const n = await this.kv.del(...keys);
     return n;
   }
 
@@ -663,7 +648,7 @@ export class AdminService {
         );
         if (n > 0) {
           this.logger.log(
-            `用户 ${updateAdminDto.id} 已禁用，已清除 Redis accessToken 会话 ${n} 条`,
+            `用户 ${updateAdminDto.id} 已禁用，已清除 accessToken 会话 ${n} 条`,
           );
         }
       } catch (e) {

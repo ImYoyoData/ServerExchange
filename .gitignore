@@ -45,6 +45,9 @@ lerna-debug.log*
 # Codegraph local index
 .codegraph/
 
+# Local memory+file cache (keyv-file)
+/.cache/
+
 # temp directory
 .temp
 .tmp

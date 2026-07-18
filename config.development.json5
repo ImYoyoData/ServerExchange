@@ -14,43 +14,17 @@
     key: 'sk-xxxxxxxxxxx',
     model: 'deepseek-ai/DeepSeek-V3',
   },
-  redis: {
-    default: {
-      open: true,
-      // 是否开启
-      type: 'single',
-      url: 'redis://127.0.0.1:6379',
-      options: {
-        password: '123456',
-        db: 0,
-      },
+  // 本地内存 + 文件缓存（替代 Redis；单机部署）
+  cache: {
+    open: true, // false 时仅内存，不写文件
+    memory: {
+      ttlMs: 0, // 默认 TTL（毫秒）；0 = 由业务 set 时指定
+      lruSize: 5000,
     },
-    rs2: {
-      open: false,
-      // 是否开启
-      type: 'cluster',
-      nodes: [
-        {
-          host: '127.0.0.1',
-          port: 6379,
-        },
-        {
-          host: '127.0.0.1',
-          port: 6380,
-        },
-      ],
-      options: {
-        scaleReads: 'master',
-        // 可选: 'master' | 'slave' | 'all' | 'nearest'
-        db: 0,
-        // 集群只能用 db 0
-        redisOptions: {
-          password: '123456',
-          // 密码
-          keyPrefix: 'app:',
-          // 所有键的前缀
-        },
-      },
+    file: {
+      filename: './.cache/kv.json',
+      writeDelayMs: 100,
+      expiredCheckDelayMs: 86400000, // 24h
     },
   },
   // 数据库配置

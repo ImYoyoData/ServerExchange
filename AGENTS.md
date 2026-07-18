@@ -6,9 +6,9 @@
 
 | 部分 | 路径 | 说明 |
 |------|------|------|
-| 后端 API | `src/` | NestJS 11，TypeORM，Zod 校验，JWT，Redis，计划任务 |
+| 后端 API | `src/` | NestJS 11，TypeORM，Zod 校验，JWT，本地内存+文件缓存，计划任务 |
 | 管理端前端 | `admin-web/` | Vue 3 + Element Plus + PureAdmin |
-| 本地开发配置 | `config.development.local.json5` | 本地环境覆盖（数据库、Redis 等） |
+| 本地开发配置 | `config.development.local.json5` | 本地环境覆盖（数据库、cache 等） |
 | 基础库结构参考 | `sys.sql` | **只读**，勿编辑 |
 | Agent 规则 | `.cursor/rules/` | Cursor 持久化规则 |
 | Agent Skills | `.cursor/skills/` | UI、调试、规划等 skill |
@@ -93,10 +93,16 @@ xo-admin/
 | 场景 | 要求 |
 |------|------|
 | 支付等关键写操作 | 使用数据库**事务** |
-| 抢单 / 秒杀 | **ioredis 分布式锁**，防并发与超卖 |
-| C 端高频读接口 | **Redis 缓存** |
+| 抢单 / 秒杀 | **本地进程内锁**（`LocalKvService.withLock`），单机防并发；多实例需另行设计 |
+| C 端高频读接口 | **本地内存 + 文件缓存**（`LocalKvService`） |
 | 后台修改缓存数据 | 提供**清除缓存**按钮或接口 |
 | 任意 API 变更 | 评估对 admin-web、C 端、其他模块的影响 |
+
+## 本地缓存（替代 Redis）
+
+- 模块：`src/common/cache`（`LocalCacheModule` / `LocalKvService`）
+- 配置：`config.*.json5` 的 `cache` 段（内存 LRU + `keyv-file`）
+- 数据目录：`./.cache/`（已 gitignore）
 
 ## UI 与功能开发流程
 
@@ -114,10 +120,11 @@ xo-admin/
 
 - **Codegraph**：大量代码变更后执行 `codegraph sync` 更新结构索引
 - **MySQL MCP**：配置为当前开发库，用于菜单/权限数据维护
-- **Redis MCP**：缓存与锁相关调试
+- **本地缓存**：字典/会话等走 `src/common/cache`（内存 + `.cache/kv.json`）
+- **Redis MCP**：已不再依赖 Redis；可忽略或用于其它服务
 
 ## 技术栈速查
 
-**后端**：NestJS、TypeORM、nestjs-zod、ioredis、@nestjs/schedule、JWT  
+**后端**：NestJS、TypeORM、nestjs-zod、@nestjs/cache-manager、keyv-file、@nestjs/schedule、JWT  
 **前端**：Vue 3、Element Plus、PureAdmin、pnpm  
 **配置**：json5（`config.*.json5`）

@@ -1,10 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { randomUUID } from 'crypto';
-import { InjectRedis } from '@nestjs-modules/ioredis';
-import { Redis } from 'ioredis';
 import { DataSource, In, Like, Repository } from 'typeorm';
 import { BusinessRejectedException } from 'src/common/exceptions';
+import { LocalKvService } from 'src/common/cache';
 import { Dict, DictData } from './entities/dict.entity';
 import { CreateDictDto } from './dto/create-dict.dto';
 import { UpdateDictDto } from './dto/update-dict.dto';
@@ -37,71 +35,31 @@ export class DictService {
       keys.push(this.getDictTreeRedisKey(code, false));
     }
 
-    // ioredis 支持批量 del（并发压力较小）
     try {
-      await this.redis.del(...keys);
+      await this.kv.del(...keys);
     } catch {
-      // 缓存失效不影响主流程，忽略 Redis 异常
+      // 缓存失效不影响主流程，忽略异常
     }
   }
 
   /**
-   * 清除全部字典树 Redis 缓存（含重建锁），供后台手动刷新。
+   * 清除全部字典树缓存（含重建锁 key），供后台手动刷新。
    */
   async clearAllDictTreeCache() {
-    const patterns = ['admin:dict:tree:*', 'admin:dict:tree:lock:*'];
-    let deleted = 0;
-
-    for (const pattern of patterns) {
-      let cursor = '0';
-      do {
-        const [nextCursor, keys] = await this.redis.scan(
-          cursor,
-          'MATCH',
-          pattern,
-          'COUNT',
-          200,
-        );
-        cursor = nextCursor;
-        if (keys.length > 0) {
-          deleted += await this.redis.del(...keys);
-        }
-      } while (cursor !== '0');
-    }
-
-    return { deleted };
+    const deletedTrees = await this.kv.clearByPrefix('admin:dict:tree:');
+    // 锁已改为进程内互斥，清前缀可顺带去掉历史残留的锁 key
+    return { deleted: deletedTrees };
   }
 
   private async tryAcquireLock(
     lockKey: string,
     ttlMs: number,
   ): Promise<string | null> {
-    const token = randomUUID();
-    // ioredis 的 TS 重载参数类型较严格，这里用 any 规避编译问题
-    const res = await (this.redis as any).set(
-      lockKey,
-      token,
-      'NX',
-      'PX',
-      ttlMs,
-    );
-    return res === 'OK' ? token : null;
+    return this.kv.tryAcquireLock(lockKey, ttlMs);
   }
 
   private async releaseLock(lockKey: string, token: string): Promise<void> {
-    // 仅当 token 匹配时才删除，避免误删他人锁
-    const script = `
-      if redis.call("get", KEYS[1]) == ARGV[1] then
-        return redis.call("del", KEYS[1])
-      else
-        return 0
-      end
-    `;
-    try {
-      await this.redis.eval(script, 1, lockKey, token);
-    } catch {
-      // ignore
-    }
+    await this.kv.releaseLock(lockKey, token);
   }
 
   private sleep(ms: number) {
@@ -170,7 +128,7 @@ export class DictService {
     @InjectRepository(DictData)
     private readonly dictDataRepository: Repository<DictData>,
     private readonly dataSource: DataSource,
-    @InjectRedis() private readonly redis: Redis,
+    private readonly kv: LocalKvService,
   ) {}
 
   /**
@@ -903,7 +861,7 @@ export class DictService {
    * dict-tree 批量查询（高频）：
    * - 入参：sys_dict.code 数组
    * - 出参：{ [code]: TreeNode[] }
-   * - 读写缓存：优先走 Redis（缺失才查库并写回 Redis），缓存 2 分钟
+   * - 读写缓存：优先走本地 KV（缺失才查库并写回），缓存 10 分钟
    * - 最大返回 5 层，且如果节点没有嵌套 code（sys_dict_data.code），则不返回 children 字段
    */
   async getDictTrees(queryDto: QueryDictTreesDto) {
@@ -923,11 +881,11 @@ export class DictService {
     // 默认返回空数组，确保返回结构稳定（{ [code]: [] }）
     for (const code of uniqueCodes) result[code] = [];
 
-    // 1) Redis 批量 mget
+    // 1) 批量 mget
     const redisKeys = uniqueCodes.map((c) =>
       this.getDictTreeRedisKey(c, status),
     );
-    const redisValues = await this.redis.mget(...redisKeys);
+    const redisValues = await this.kv.mget<string>(redisKeys);
 
     const stillMissingCodes: string[] = [];
     for (let i = 0; i < uniqueCodes.length; i++) {
@@ -939,7 +897,7 @@ export class DictService {
       }
 
       try {
-        const parsed = JSON.parse(raw);
+        const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
         result[code] = Array.isArray(parsed) ? parsed : [];
       } catch {
         stillMissingCodes.push(code);
@@ -968,7 +926,7 @@ export class DictService {
       }
     }
 
-    // 等待其他请求把 Redis 写回来（短暂轮询）
+    // 等待其他请求把缓存写回来（短暂轮询）
     const remaining = new Set<string>(notLockedCodes);
     if (remaining.size > 0) {
       const start = Date.now();
@@ -977,14 +935,14 @@ export class DictService {
         const pollKeys = pollCodes.map((c) =>
           this.getDictTreeRedisKey(c, status),
         );
-        const pollValues = await this.redis.mget(...pollKeys);
+        const pollValues = await this.kv.mget<string>(pollKeys);
 
         for (let i = 0; i < pollCodes.length; i++) {
           const code = pollCodes[i];
           const raw = pollValues[i];
           if (!raw) continue;
           try {
-            const parsed = JSON.parse(raw);
+            const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
             result[code] = Array.isArray(parsed) ? parsed : [];
             remaining.delete(code);
           } catch {
@@ -1023,15 +981,15 @@ export class DictService {
     try {
       built = await this.buildDictTreesForCodesFromDB(toBuildCodes, status);
 
-      // 4) 批量写回 Redis（10分钟）
-      const pipeline = this.redis.pipeline();
-      for (const code of toBuildCodes) {
-        const data = built[code] ?? [];
-        result[code] = data;
-        const redisKey = this.getDictTreeRedisKey(code, status);
-        pipeline.set(redisKey, JSON.stringify(data), 'EX', 600);
-      }
-      await pipeline.exec();
+      // 4) 批量写回缓存（10分钟）
+      await Promise.all(
+        toBuildCodes.map(async (code) => {
+          const data = built[code] ?? [];
+          result[code] = data;
+          const redisKey = this.getDictTreeRedisKey(code, status);
+          await this.kv.set(redisKey, JSON.stringify(data), 600);
+        }),
+      );
     } finally {
       // 5) 释放锁
       for (const [code, token] of lockTokens.entries()) {

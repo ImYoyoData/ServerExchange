@@ -19,7 +19,7 @@
 - **Node.js** ≥ 20.0.0  
 - **pnpm** ≥ 9.0.0（全局安装：`npm i -g pnpm`）  
 - **MySQL**（默认，见 `config.*.json5` 中 `database`；可按配置切换 PostgreSQL / SQLite）  
-- **Redis**（字典树缓存、管理员 accessToken 会话等；可在配置中 `open: false` 关闭对应连接，但部分功能会降级或不可用）
+- **本地缓存**（内存 + 文件，见 `config.*.json5` 的 `cache`；字典树与管理员 accessToken 会话等，无需 Redis）
 
 > 存放代码的目录及父级路径**避免中文、韩文、日文及空格**，否则可能影响依赖安装或启动。
 
@@ -88,9 +88,9 @@ docker run --rm \
 
 **说明：**
 
-- **MySQL、Redis** 需自行部署或使用另一 Compose 栈；在配置文件中把 `host` 写成容器网络内可达地址（如 `mysql`、`redis` 服务名）。  
-- 生产配置需包含可用的 `database`、`redis`、`httpPort` 等；`JWT_SECRET` 等可放在挂载的 `.env` 中。  
-- 当前仓库**未附带** `docker-compose.yml`，可按需自行增加 MySQL/Redis 与上述镜像的编排。
+- **MySQL** 需自行部署或使用另一 Compose 栈；在配置文件中把 `host` 写成容器网络内可达地址（如 `mysql` 服务名）。  
+- 生产配置需包含可用的 `database`、`cache`、`httpPort` 等；`JWT_SECRET` 等可放在挂载的 `.env` 中。缓存文件目录（默认 `./.cache`）建议挂载卷以便重启后保留会话。  
+- 当前仓库**未附带** `docker-compose.yml`，可按需自行增加 MySQL 与上述镜像的编排。
 
 ---
 
@@ -99,8 +99,8 @@ docker run --rm \
 - **框架**：NestJS 11、Express  
 - **校验**：nestjs-zod + Zod（全局 `ZodValidationPipe`）  
 - **ORM**：TypeORM + **mysql2**（可按配置使用 PostgreSQL / SQLite）  
-- **缓存**：ioredis（`@nestjs-modules/ioredis`）  
-- **认证**：`@nestjs/jwt`，管理端路由由 `AdminGuard` + 可选 Redis 会话校验  
+- **缓存**：`@nestjs/cache-manager` + Keyv（内存 LRU + `keyv-file` 文件持久化）  
+- **认证**：`@nestjs/jwt`，管理端路由由 `AdminGuard` + 本地 KV 会话校验  
 - **其它**：dayjs、log4js、限流（Throttler）、静态资源、定时任务（Schedule）、可选 LangChain / LangGraph（Agent 模块）
 
 ---
@@ -118,7 +118,7 @@ docker run --rm \
 |------|------|----------|
 | **菜单** | `menu/` | 菜单与角色-菜单关联 |
 | **角色** | `role/` | 角色管理 |
-| **字典** | `dict/` | 系统字典与字典项（含树形查询、Redis 缓存等） |
+| **字典** | `dict/` | 系统字典与字典项（含树形查询、本地 KV 缓存等） |
 | **文件** | `file/` | 文件上传与信息管理 |
 | **消息** | `message/` | 站内通知/消息 |
 | **工具** | `utils/` | 通用工具接口 |
@@ -146,7 +146,7 @@ nest-admin-xo-server/
 ├── dist/                      # 编译输出（pnpm run build）
 └── src/
     ├── main.ts                # 入口：端口、全局前缀、Swagger、日志
-    ├── app.module.ts          # 根模块：Config、DB、Redis、Jwt、各业务模块
+    ├── app.module.ts          # 根模块：Config、DB、LocalCache、Jwt、各业务模块
     ├── app.controller.ts      # 根路径健康/欢迎
     ├── app.service.ts
     │
@@ -183,10 +183,10 @@ nest-admin-xo-server/
         ├── exceptions/          # BusinessPass、BusinessRejectedException
         ├── guards/
         ├── interceptors/        # 统一响应、首错拦截等
+        ├── cache/               # 本地内存 + 文件缓存（LocalKvService）
         └── utils/
             ├── json5.config.ts  # 加载 config.*.json5 → global.CONFIG
             ├── database.config.ts
-            ├── redis.config.ts
             ├── static.config.ts
             ├── throttle.config.ts
             ├── swagger.config.ts
@@ -202,8 +202,8 @@ nest-admin-xo-server/
 1. **启动报「未找到配置文件」**  
    确认项目根（或向上查找路径）存在 `config.development.json5` 或 `config.development.local.json5`（与当前 `NODE_ENV` 一致）。
 
-2. **数据库 / Redis 连不上**  
-   检查对应 `config.*.json5` 中的 `database`、`redis` 是否 `open: true` 以及账号、地址、密码是否正确。
+2. **数据库连不上**  
+   检查对应 `config.*.json5` 中的 `database` 是否 `open: true` 以及账号、地址、密码是否正确。本地缓存见 `cache` 段（默认写入 `./.cache/kv.json`）。
 
 3. **JWT / 前缀**  
    在 `.env` / `.env.local` 中配置 `JWT_SECRET`、`JWT_EXPIRES_IN` 等；接口路径需加上 `API_PREFIX`（若设置了 `/api` 等）。

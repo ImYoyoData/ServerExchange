@@ -5,51 +5,33 @@ import { z } from 'zod';
 
 import { normalizeAgentProvider } from '../../api/admin/agent/ai-model';
 
-// Redis 单节点配置 Schema
-const RedisSingleConfigSchema = z.object({
-  open: z.boolean(),
-  type: z.literal('single'),
-  url: z.string(),
-  options: z
+/** 本地内存 + 文件缓存配置（替代 Redis） */
+const CacheConfigSchema = z.object({
+  /** false 时仅内存层，不写文件（调试用） */
+  open: z.boolean().default(true),
+  memory: z
     .object({
-      password: z.string().optional(),
-      db: z.number().optional(),
+      /** 默认 TTL（毫秒）；0 = 不设默认过期 */
+      ttlMs: z.number().nonnegative().default(0),
+      /** 内存 LRU 上限 */
+      lruSize: z.number().int().positive().default(5000),
     })
-    .catchall(z.any()),
-});
-
-// Redis 集群节点 Schema
-const RedisClusterNodeSchema = z.object({
-  host: z.string(),
-  port: z.number(),
-});
-
-// Redis 集群配置 Schema
-const RedisClusterConfigSchema = z.object({
-  open: z.boolean(),
-  type: z.literal('cluster'),
-  nodes: z.array(RedisClusterNodeSchema),
-  options: z
+    .default({ ttlMs: 0, lruSize: 5000 }),
+  file: z
     .object({
-      scaleReads: z.enum(['master', 'slave', 'all', 'nearest']).optional(),
-      db: z.number().optional(),
-      redisOptions: z
-        .object({
-          password: z.string().optional(),
-          keyPrefix: z.string().optional(),
-        })
-        .optional(),
+      /** keyv-file 持久化路径（相对项目根） */
+      filename: z.string().min(1).default('./.cache/kv.json'),
+      /** 批量写盘延迟（毫秒） */
+      writeDelayMs: z.number().nonnegative().default(100),
+      /** 过期扫描间隔（毫秒） */
+      expiredCheckDelayMs: z.number().positive().default(86_400_000),
     })
-    .optional(),
+    .default({
+      filename: './.cache/kv.json',
+      writeDelayMs: 100,
+      expiredCheckDelayMs: 86_400_000,
+    }),
 });
-
-// Redis 配置 Schema（可以是单节点或集群）
-const RedisConfigItemSchema = z.union([
-  RedisSingleConfigSchema,
-  RedisClusterConfigSchema,
-]);
-
-const RedisConfigSchema = z.record(z.string(), RedisConfigItemSchema);
 
 // 标准数据库配置 Schema（MySQL、PostgreSQL、MariaDB、Oracle、MSSQL 等）
 const StandardDbConfigSchema = z
@@ -117,7 +99,7 @@ export const ConfigSchema = z
   .object({
     httpPort: z.coerce.number('请填写Http监听端口').default(3000),
     agent: AgentConfigSchema.optional(),
-    redis: RedisConfigSchema,
+    cache: CacheConfigSchema,
     database: DatabaseConfigsSchema,
   })
   .catchall(z.any());
@@ -126,10 +108,7 @@ export const ConfigSchema = z
 
 // 从 Schema 导出类型
 export type ConfigType = z.infer<typeof ConfigSchema>;
-export type RedisSingleConfig = z.infer<typeof RedisSingleConfigSchema>;
-export type RedisClusterConfig = z.infer<typeof RedisClusterConfigSchema>;
-export type RedisClusterNode = z.infer<typeof RedisClusterNodeSchema>;
-export type RedisConfig = z.infer<typeof RedisConfigSchema>;
+export type CacheConfig = z.infer<typeof CacheConfigSchema>;
 export type StandardDbConfig = z.infer<typeof StandardDbConfigSchema>;
 export type SqliteConfig = z.infer<typeof SqliteConfigSchema>;
 export type DatabaseConfig = z.infer<typeof DatabaseConfigSchema>;

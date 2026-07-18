@@ -19,7 +19,7 @@ import { ScheduleModule } from '@nestjs/schedule';
 import { AdminModule } from './api/admin/admin.module';
 import { getResponseInterceptor } from './common/interceptors/response.interceptor';
 import { getStaticConfigs } from './common/utils/static.config';
-import { getRedisModules } from './common/utils/redis.config';
+import { LocalCacheModule } from './common/cache';
 import { Log4jsModule } from './common/utils/log4js.config';
 
 @Module({
@@ -38,8 +38,8 @@ import { Log4jsModule } from './common/utils/log4js.config';
 
     // 静态文件服务
     ...getStaticConfigs(),
-    // redis加载
-    ...getRedisModules(),
+    // 本地内存 + 文件缓存（替代 Redis）
+    LocalCacheModule,
     // 关系型数据库加载
     ...getDatabaseModules(),
     JwtModule.register({
