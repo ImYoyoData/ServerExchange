@@ -70,7 +70,7 @@ pids
 report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 # 使用 pnpm：提交 pnpm-lock.yaml；若误用 npm 可忽略其锁文件
 /package-lock.json
-/pnpm-lock.yaml
+# /pnpm-lock.yaml  — 已改为提交，供 CI 与可复现安装
 
 # admin-web (merged from admin-web/.gitignore)
 /admin-web/node_modules
@@ -85,7 +85,7 @@ report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 /admin-web/.pnpm-debug.log
 /admin-web/tests/**/coverage/
 /admin-web/tsconfig.tsbuildinfo
-/admin-web/pnpm-lock.yaml
+# /admin-web/pnpm-lock.yaml — 已改为提交，供 CI 与可复现安装
 
 # Visual Studio files
 *.suo
