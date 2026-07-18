@@ -1,0 +1,126 @@
+# 推送到 main → 自动编译 Windows 便携包并发布 GitHub Release
+# 日常开发在 dev，合并/推送到 main 触发本流程
+name: Release Windows Portable
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-windows-portable-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-release:
+    runs-on: windows-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Cache portable Node / prebuilds
+        uses: actions/cache@v4
+        with:
+          path: release/.cache
+          key: portable-cache-${{ runner.os }}-${{ hashFiles('scripts/pack-windows-portable.cjs', 'package.json') }}
+          restore-keys: |
+            portable-cache-${{ runner.os }}-
+
+      - name: Install root dependencies
+        run: pnpm install --frozen-lockfile=false
+
+      - name: Install admin-web dependencies
+        working-directory: admin-web
+        run: pnpm install --frozen-lockfile=false
+
+      - name: Ensure production .env for pack
+        shell: pwsh
+        run: |
+          if (-not (Test-Path .env)) {
+            if (Test-Path .env.example) {
+              Copy-Item .env.example .env
+            } else {
+              @"
+          APP_NAME=Nest Admin Xo
+          DOMAIN=http://localhost:8080
+          DOMAIN_DEV=http://localhost:3500
+          VERSION=1.0.0
+          API_PREFIX=/api
+          JWT_EXPIRES_IN=2h
+          JWT_REFRESH_EXPIRES_IN=7d
+          JWT_SECRET=change-me-before-production-use-at-least-32-chars
+          RESPONSE_INTERCEPTOR=false
+          THROTTLE_GLOBAL=false
+          THROTTLE_TTL=60000
+          THROTTLE_LIMIT=120
+          SWAGGER_ENABLED=false
+          DB_ENTITY_PREFIX=
+          DB_DATE_STRINGS=true
+          DB_SYNCHRONIZE=false
+          DB_LOGGING=false
+          DB_LOGGING_TYPE=file
+          DB_LOGGING_TYPE_DEV=file
+          "@ | Set-Content -Path .env -Encoding utf8
+            }
+          }
+
+      - name: Build & pack Windows portable
+        shell: pwsh
+        run: pnpm run pack:win
+        env:
+          NODE_ENV: production
+
+      - name: Zip portable package
+        shell: pwsh
+        run: |
+          $ver = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          $tag = "v$ver.$env:GITHUB_RUN_NUMBER"
+          $name = "ServerExchange-portable-windows-x64-$tag"
+          $src = "release\ServerExchange-portable"
+          if (-not (Test-Path $src)) { throw "missing $src" }
+          $zip = "release\$name.zip"
+          if (Test-Path $zip) { Remove-Item $zip -Force }
+          Compress-Archive -Path "$src\*" -DestinationPath $zip -CompressionLevel Optimal
+          "ASSET_PATH=$zip" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "RELEASE_TAG=$tag" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "RELEASE_NAME=ServerExchange Portable $tag" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          Get-Item $zip | Format-List FullName, Length
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.RELEASE_TAG }}
+          name: ${{ env.RELEASE_NAME }}
+          body: |
+            ## Windows 便携包
+
+            - 触发：`main` 分支推送（run `#${{ github.run_number }}`）
+            - 提交：`${{ github.sha }}`
+            - 解压后双击 `start.bat`
+            - 访问：http://localhost:8080/admin/
+            - 默认账号：`admin` / `admin123`
+
+            > 对方电脑无需安装 Node（包内自带 `node.exe`，仅支持 Windows x64）。
+          files: ${{ env.ASSET_PATH }}
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

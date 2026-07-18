@@ -63,6 +63,24 @@ pnpm install
 
 ---
 
+## Windows 便携包与自动发布
+
+本地打包（输出 `release/ServerExchange-portable/`）：
+
+```bash
+pnpm run pack:win
+```
+
+**分支约定：** 日常开发在 `dev`；推送到 **`main`** 时，GitHub Actions（`.github/workflows/release-windows-portable.yml`）会自动：
+
+1. 编译前后端并打 Windows x64 便携包  
+2. 压缩为 zip  
+3. 创建 GitHub Release（附件可下载）
+
+也可在 Actions 页手动 `workflow_dispatch` 触发。
+
+---
+
 ## Docker（内置镜像构建）
 
 仓库根目录提供 **`Dockerfile`**（多阶段构建：Node 22 Alpine + pnpm 构建，生产镜像仅含 `node_modules` 与编译产物）及 **`.dockerignore`**。
