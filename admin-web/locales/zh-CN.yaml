@@ -100,7 +100,7 @@ welcome:
   pureGuest: 管理员
   pureGreeting: 欢迎回来，
   pureTitle: 工作台
-  pureDesc: 当前页面为管理端静态展示，不请求任何接口。请从左侧菜单进入具体业务。
+  pureDesc: 我的世界服务器玩家服内交易所（ServerExchange）管理后台。请从左侧菜单进入业务模块。
   pureOverview: 数据概览（示意）
   pureOverviewHint: 数值仅为样式占位，后续可对接真实统计。
   pureStatUsers: 用户

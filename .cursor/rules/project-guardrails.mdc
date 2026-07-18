@@ -8,12 +8,13 @@ alwaysApply: true
 ## 禁止擅自修改
 
 - `package.json` 的 `scripts`：无开发者明确要求不得改动
-- `sys.sql`：仅为基础库结构参考，只读不编辑
+- `sys.sql`：开发环境启动时由程序**自动覆盖备份**（结构+数据）；勿手改后期望长期保留，除非关闭备份（`DEV_SQLITE_BACKUP=false`）
 
 ## 配置与环境
 
 - 本地开发配置：`config.development.local.json5`
 - 基础配置模板：`config.development.json5` / `config.production.json5`
+- SQLite MCP：`.cursor/mcp.json` 中 `sqlite` → `data/app.db`
 
 ## 功能开发流程
 

@@ -100,7 +100,7 @@ welcome:
   pureGuest: Admin
   pureGreeting: Welcome back,
   pureTitle: Dashboard
-  pureDesc: This page is static for presentation only and does not call any API. Open business modules from the left menu.
+  pureDesc: ServerExchange admin for Minecraft in-server player marketplace. Open modules from the left menu.
   pureOverview: Overview (demo)
   pureOverviewHint: Numbers are placeholders for styling; connect real stats later.
   pureStatUsers: Users

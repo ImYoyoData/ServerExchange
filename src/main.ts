@@ -4,7 +4,7 @@ import { PrintSwaggerUrl, SwaggerUi } from './common/utils/swagger.config';
 import { Logger } from './common/utils/log4js.config';
 
 async function bootstrap() {
-  const logger = new Logger('快快快快快');
+  const logger = new Logger('ServerExchange');
   const port = global.CONFIG.httpPort;
   const app = await NestFactory.create(AppModule, {
     bufferLogs: true, // 缓存日志第三方日志库需要

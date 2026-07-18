@@ -5,7 +5,7 @@ export const DEFAULT_MAX_PAGE_BYTES = 2 * 1024 * 1024;
 export const DEFAULT_MAX_PAGE_CHARS = 12_000;
 
 const DEFAULT_USER_AGENT =
-  'Mozilla/5.0 (compatible; nest-admin-xo-agent/1.0; +https://github.com/)';
+  'Mozilla/5.0 (compatible; ServerExchange-agent/1.0; +https://github.com/ImYoyoData/ServerExchange)';
 
 export function extractHtmlTitle(html: string): string | undefined {
   const match = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);

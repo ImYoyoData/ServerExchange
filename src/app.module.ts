@@ -21,6 +21,7 @@ import { getResponseInterceptor } from './common/interceptors/response.intercept
 import { getStaticConfigs } from './common/utils/static.config';
 import { LocalCacheModule } from './common/cache';
 import { Log4jsModule } from './common/utils/log4js.config';
+import { DevSqliteBackupService } from './common/database/dev-sqlite-backup.service';
 
 @Module({
   imports: [
@@ -59,6 +60,8 @@ import { Log4jsModule } from './common/utils/log4js.config';
     // 条件性地注册全局限流守卫
     ...getThrottleProviders(),
     AppService,
+    // 开发环境：启动后将 SQLite 备份为项目根 sys.sql
+    DevSqliteBackupService,
     // 添加全局验证管道
     {
       provide: APP_PIPE,

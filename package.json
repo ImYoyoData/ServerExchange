@@ -1,7 +1,7 @@
 {
-  "name": "nest-admin-xo",
+  "name": "server-exchange",
   "version": "0.0.1",
-  "description": "NestJS Admin XO",
+  "description": "ServerExchange — Minecraft server in-game player marketplace (API + admin)",
   "author": "Yoyo",
   "private": true,
   "license": "UNLICENSED",

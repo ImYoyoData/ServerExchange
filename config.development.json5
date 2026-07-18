@@ -1,20 +1,20 @@
-//  容器访问宿主机
-//  windows 可以用 host.docker.internal
-//  linux 可以用 172.17.0.1
-//  如果 linux 也想用 host.docker.internal  你可以设置网络映射网关实现
+//  ???????
+//  windows ??? host.docker.internal
+//  linux ??? 172.17.0.1
+//  ?? linux ??? host.docker.internal  ?????????????
 {
-  httpPort: 3500, // http监听端口
-  // AI Agent（TypeORM 实体生成、对话等）
-  // provider: openai（Chat Completions）| anthropic（Messages API）
-  // jinaKey 可选：用于 searchWeb / fetchWebPage 提升网络检索配额
-  // 真实密钥请写在 config.development.local.json5（优先级更高）
+  httpPort: 3500, // http????
+  // AI Agent?TypeORM ?????????
+  // provider: openai?Chat Completions?| anthropic?Messages API?
+  // jinaKey ????? searchWeb / fetchWebPage ????????
+  // ??????? config.development.local.json5???????
   agent: {
     provider: 'openai',
     url: 'https://api.siliconflow.cn/v1',
     key: 'sk-xxxxxxxxxxx',
     model: 'deepseek-ai/DeepSeek-V3',
   },
-  // 本地内存 + 文件缓存（替代 Redis；单机部署）
+  // ???? + ??????? Redis??????
   cache: {
     open: true,
     memory: {
@@ -27,17 +27,17 @@
       expiredCheckDelayMs: 86400000,
     },
   },
-  // 数据库配置
+  // ?????
   database: {
-    // 默认使用 SQLite，便于单机分发；结构/种子来自 sys.sql 导入
+    // ???? SQLite??????????/???? sys.sql ??
     default: {
       open: true,
       type: 'sqlite',
       database: './data/app.db',
-      // 使用 sys.sql 导入的结构，避免 TypeORM synchronize 改表
-      synchronize: false,
+      // ???TypeORM synchronize ???????????????????? sys.sql
+      synchronize: true,
     },
-    // MySQL（可选）
+    // MySQL????
     mysql: {
       open: false,
       type: 'mysql',

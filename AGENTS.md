@@ -1,15 +1,17 @@
-# nest-admin-xo — Agent 开发指南
+# ServerExchange — Agent 开发指南
 
 本文档供 AI Agent 与开发者协作时使用，描述项目结构、目录约定与开发规范。
 
 ## 项目概览
 
+**ServerExchange**（服内交易所）：《我的世界》服务器玩家服内交易应用的管理端与 API。
+
 | 部分 | 路径 | 说明 |
 |------|------|------|
 | 后端 API | `src/` | NestJS 11，TypeORM，Zod 校验，JWT，本地内存+文件缓存，计划任务 |
-| 管理端前端 | `admin-web/` | Vue 3 + Element Plus + PureAdmin |
+| 管理端前端 | `admin-web/` | Vue 3 + Element Plus |
 | 本地开发配置 | `config.development.local.json5` | 本地环境覆盖（数据库默认 SQLite、cache 等） |
-| 基础库结构参考 | `sys.sql` | **只读** MySQL 导出；导入 SQLite 用 `node scripts/import-sys-sql-to-sqlite.cjs` |
+| 基础库结构参考 | `sys.sql` | 开发启动时由 SQLite **自动备份覆盖**（结构+数据）；可用 `DEV_SQLITE_BACKUP=false` 关闭 |
 | Agent 规则 | `.cursor/rules/` | Cursor 持久化规则 |
 | Agent Skills | `.cursor/skills/` | UI、调试、规划等 skill |
 | MCP 配置 | `.cursor/mcp.json` | 项目级 MCP（如 Playwright） |
@@ -17,7 +19,7 @@
 ## 目录结构
 
 ```
-xo-admin/
+ServerExchange/
 ├── src/
 │   ├── main.ts                 # 入口
 │   ├── app.module.ts           # 根模块
@@ -44,7 +46,7 @@ xo-admin/
 │   └── package.json
 ├── config.development.json5
 ├── config.development.local.json5
-├── sys.sql                     # 基础表结构参考，勿改
+├── sys.sql                     # 开发启动自动备份（SQLite dump）
 └── package.json                # scripts 勿擅自修改
 ```
 
@@ -114,17 +116,17 @@ xo-admin/
 ## 禁止擅自修改
 
 - `package.json` 的 `scripts`（除非开发者明确要求）
-- `sys.sql`
+- `sys.sql` 勿手改指望长期保留：开发启动会自动覆盖；关闭备份设 `DEV_SQLITE_BACKUP=false`
 
 ## 工具与维护
 
 - **Codegraph**：大量代码变更后执行 `codegraph sync` 更新结构索引
-- **MySQL MCP**：配置为当前开发库，用于菜单/权限数据维护
+- **SQLite MCP**：`.cursor/mcp.json` → `sqlite`，库文件 `${workspaceFolder}/data/app.db`
+- **MySQL MCP**：可选（若改用 MySQL）
 - **本地缓存**：字典/会话等走 `src/common/cache`（内存 + `.cache/kv.json`）
-- **Redis MCP**：已不再依赖 Redis；可忽略或用于其它服务
 
 ## 技术栈速查
 
 **后端**：NestJS、TypeORM、SQLite、nestjs-zod、@nestjs/cache-manager、keyv-file、@nestjs/schedule、JWT  
-**前端**：Vue 3、Element Plus、PureAdmin、pnpm  
+**前端**：Vue 3、Element Plus、pnpm  
 **配置**：json5（`config.*.json5`）

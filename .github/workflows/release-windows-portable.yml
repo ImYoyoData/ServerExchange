@@ -23,6 +23,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          # 需要完整历史与 tag，才能对比「距上次 Release」的提交
+          fetch-depth: 0
 
       # 版本必须与 package.json → packageManager 一致（当前 pnpm@10.32.1）
       - name: Setup pnpm
@@ -75,7 +78,7 @@ jobs:
         env:
           NODE_ENV: production
 
-      - name: Zip portable package
+      - name: Zip package & build release notes
         shell: pwsh
         run: |
           $ver = (Get-Content package.json -Raw | ConvertFrom-Json).version
@@ -87,9 +90,117 @@ jobs:
           $zip = "release\$name.zip"
           if (Test-Path $zip) { Remove-Item $zip -Force }
           Compress-Archive -Path "$src\*" -DestinationPath $zip -CompressionLevel Optimal
+
+          # ---- 距上次 Release(tag) 的更新说明 ----
+          git fetch --tags --force 2>$null
+          $prevTag = git for-each-ref --sort=-creatordate --format="%(refname:short)" refs/tags |
+            Where-Object { $_ -match '^v' } |
+            Select-Object -First 1
+
+          if ($prevTag) {
+            $range = "$prevTag..HEAD"
+            $rangeLabel = "自上个版本 ``$prevTag`` 以来"
+          } else {
+            $range = "HEAD"
+            # 首次发布：取最近 50 条，避免整仓历史过长
+            $rangeLabel = "首次发布（近期提交）"
+          }
+
+          $logArgs = @('log', '--no-merges', '--pretty=format:%s|||%h')
+          if ($prevTag) {
+            $logArgs += $range
+          } else {
+            $logArgs += @('-n', '50')
+          }
+          $raw = & git @logArgs 2>$null
+          if (-not $raw) { $raw = @() }
+          $lines = @($raw | Where-Object { $_ -and $_.Trim() })
+
+          function Get-CommitCategory([string]$subject) {
+            if ($subject -match '^(feat)(\(.+\))?[!]?:\s*(.+)$') { return @{ Key = 'feat'; Title = '新增'; Text = $Matches[3] } }
+            if ($subject -match '^(fix)(\(.+\))?[!]?:\s*(.+)$') { return @{ Key = 'fix'; Title = '修复'; Text = $Matches[3] } }
+            if ($subject -match '^(perf)(\(.+\))?[!]?:\s*(.+)$') { return @{ Key = 'perf'; Title = '性能'; Text = $Matches[3] } }
+            if ($subject -match '^(refactor)(\(.+\))?[!]?:\s*(.+)$') { return @{ Key = 'refactor'; Title = '重构'; Text = $Matches[3] } }
+            if ($subject -match '^(docs)(\(.+\))?[!]?:\s*(.+)$') { return @{ Key = 'docs'; Title = '文档'; Text = $Matches[3] } }
+            if ($subject -match '^(chore|ci|build|style|test)(\(.+\))?[!]?:\s*(.+)$') {
+              return @{ Key = 'chore'; Title = '杂项'; Text = $Matches[3] }
+            }
+            return @{ Key = 'other'; Title = '其他'; Text = $subject }
+          }
+
+          $groups = [ordered]@{
+            feat     = [System.Collections.Generic.List[string]]::new()
+            fix      = [System.Collections.Generic.List[string]]::new()
+            perf     = [System.Collections.Generic.List[string]]::new()
+            refactor = [System.Collections.Generic.List[string]]::new()
+            docs     = [System.Collections.Generic.List[string]]::new()
+            chore    = [System.Collections.Generic.List[string]]::new()
+            other    = [System.Collections.Generic.List[string]]::new()
+          }
+          $titles = @{
+            feat = '新增'; fix = '修复'; perf = '性能'; refactor = '重构'
+            docs = '文档'; chore = '杂项'; other = '其他'
+          }
+
+          foreach ($line in $lines) {
+            $parts = $line -split '\|\|\|', 2
+            $subject = $parts[0].Trim()
+            $hash = if ($parts.Count -gt 1) { $parts[1].Trim() } else { '' }
+            if ($subject -match '^merge\b') { continue }
+            $cat = Get-CommitCategory $subject
+            $item = if ($hash) { "- $($cat.Text) ($hash)" } else { "- $($cat.Text)" }
+            $groups[$cat.Key].Add($item)
+          }
+
+          $sb = New-Object System.Text.StringBuilder
+          [void]$sb.AppendLine('## Windows 便携包')
+          [void]$sb.AppendLine('')
+          [void]$sb.AppendLine("- 版本：``$tag``")
+          [void]$sb.AppendLine("- 触发：``main`` 推送（run ``#$($env:GITHUB_RUN_NUMBER)``）")
+          [void]$sb.AppendLine("- 提交：``$($env:GITHUB_SHA)``")
+          if ($prevTag) {
+            [void]$sb.AppendLine("- 对比：``$prevTag`` → ``$tag``")
+          }
+          [void]$sb.AppendLine('')
+          [void]$sb.AppendLine('### 使用说明')
+          [void]$sb.AppendLine('')
+          [void]$sb.AppendLine('- 解压后双击 `start.bat`')
+          [void]$sb.AppendLine('- 访问：http://localhost:8080/admin/')
+          [void]$sb.AppendLine('- 默认账号：`admin` / `admin123`')
+          [void]$sb.AppendLine('')
+          [void]$sb.AppendLine('> 对方电脑无需安装 Node（包内自带 `node.exe`，仅支持 Windows x64）。')
+          [void]$sb.AppendLine('')
+          [void]$sb.AppendLine("### 更新内容（$rangeLabel）")
+          [void]$sb.AppendLine('')
+
+          $hasAny = $false
+          foreach ($key in @('feat', 'fix', 'perf', 'refactor', 'docs', 'chore', 'other')) {
+            $list = $groups[$key]
+            if ($list.Count -eq 0) { continue }
+            $hasAny = $true
+            [void]$sb.AppendLine("#### $($titles[$key])")
+            [void]$sb.AppendLine('')
+            foreach ($item in $list) { [void]$sb.AppendLine($item) }
+            [void]$sb.AppendLine('')
+          }
+          if (-not $hasAny) {
+            [void]$sb.AppendLine('_本次无新增提交说明（或均为 merge）。_')
+            [void]$sb.AppendLine('')
+          }
+
+          $notesPath = 'release\RELEASE_NOTES.md'
+          New-Item -ItemType Directory -Force -Path 'release' | Out-Null
+          # UTF-8 without BOM，避免 Release 正文乱码
+          $utf8 = New-Object System.Text.UTF8Encoding $false
+          [System.IO.File]::WriteAllText((Join-Path (Get-Location) $notesPath), $sb.ToString(), $utf8)
+
           "ASSET_PATH=$zip" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
           "RELEASE_TAG=$tag" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
           "RELEASE_NAME=ServerExchange Portable $tag" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "RELEASE_NOTES_PATH=$notesPath" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+          Write-Host "----- RELEASE NOTES -----"
+          Get-Content $notesPath
           Get-Item $zip | Format-List FullName, Length
 
       - name: Create GitHub Release
@@ -97,20 +208,12 @@ jobs:
         with:
           tag_name: ${{ env.RELEASE_TAG }}
           name: ${{ env.RELEASE_NAME }}
-          body: |
-            ## Windows 便携包
-
-            - 触发：`main` 分支推送（run `#${{ github.run_number }}`）
-            - 提交：`${{ github.sha }}`
-            - 解压后双击 `start.bat`
-            - 访问：http://localhost:8080/admin/
-            - 默认账号：`admin` / `admin123`
-
-            > 对方电脑无需安装 Node（包内自带 `node.exe`，仅支持 Windows x64）。
+          body_path: ${{ env.RELEASE_NOTES_PATH }}
           files: ${{ env.ASSET_PATH }}
           draft: false
           prerelease: false
-          generate_release_notes: true
+          # 正文已按 conventional commits 分类生成，不再叠一份英文自动笔记
+          generate_release_notes: false
           fail_on_unmatched_files: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
