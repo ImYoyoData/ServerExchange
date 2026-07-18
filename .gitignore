@@ -48,6 +48,14 @@ lerna-debug.log*
 # Local memory+file cache (keyv-file)
 /.cache/
 
+# SQLite database files
+/data/*.db
+/data/*.db-*
+!/data/.gitkeep
+
+# Windows portable release output
+/release/
+
 # temp directory
 .temp
 .tmp

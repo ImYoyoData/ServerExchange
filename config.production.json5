@@ -28,21 +28,23 @@
   },
   // 数据库配置
   database: {
+    // 默认使用 SQLite，便于单机分发；结构/种子来自 sys.sql 导入
     default: {
       open: true,
-      // 是否开启
+      type: 'sqlite',
+      database: './data/app.db',
+      // 使用 sys.sql 导入的结构，避免 TypeORM synchronize 改表
+      synchronize: false,
+    },
+    // MySQL（可选）
+    mysql: {
+      open: false,
       type: 'mysql',
-      // 默认已经安装了 mysql2
       host: '127.0.0.1',
       port: 3306,
       username: 'yoyo',
       password: '123456',
       database: 'test',
-      //      以下配置和.env重合 但是如果实现以下的配置 就会失去对开发环境判断的逻辑
-      //      entityPrefix: 'na_' //优先级会大于全局 .env 下的
-      //      dateStrings:true // 优先级会大于全局 .env 下的
-      //      synchronize: false // 优先级会大于全局 .env 下的
-      // 开启连接池
       pool: {
         max: 30,
         min: 3,
@@ -52,22 +54,12 @@
     },
     pg1: {
       open: false,
-      // 是否开启
       type: 'postgres',
-      // 记得 pnpm add pg
       host: '127.0.0.1',
       port: 5432,
       username: 'yoyo',
       password: '123456',
-      database: 'test'
+      database: 'test',
     },
-    // sqlite
-    site: {
-      open: false,
-      // 是否开启
-      type: 'sqlite',
-      // 记得 pnpm add sqlite3
-      database: 'test.db'
-    }
-  }
+  },
 }

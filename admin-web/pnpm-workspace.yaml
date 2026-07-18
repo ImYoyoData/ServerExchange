@@ -1,0 +1,17 @@
+# pnpm 11+：原 package.json 的 "pnpm" 字段已失效，构建审批写在这里
+onlyBuiltDependencies:
+  - '@parcel/watcher'
+  - core-js
+  - es5-ext
+  - esbuild
+  - typeit
+  - vue-demi
+
+ignoredBuiltDependencies:
+  - '@tailwindcss/oxide'
+
+allowBuilds:
+  '@parcel/watcher': true
+  es5-ext: true
+  esbuild: true
+  vue-demi: true

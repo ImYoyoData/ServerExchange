@@ -8,8 +8,8 @@
 |------|------|------|
 | 后端 API | `src/` | NestJS 11，TypeORM，Zod 校验，JWT，本地内存+文件缓存，计划任务 |
 | 管理端前端 | `admin-web/` | Vue 3 + Element Plus + PureAdmin |
-| 本地开发配置 | `config.development.local.json5` | 本地环境覆盖（数据库、cache 等） |
-| 基础库结构参考 | `sys.sql` | **只读**，勿编辑 |
+| 本地开发配置 | `config.development.local.json5` | 本地环境覆盖（数据库默认 SQLite、cache 等） |
+| 基础库结构参考 | `sys.sql` | **只读** MySQL 导出；导入 SQLite 用 `node scripts/import-sys-sql-to-sqlite.cjs` |
 | Agent 规则 | `.cursor/rules/` | Cursor 持久化规则 |
 | Agent Skills | `.cursor/skills/` | UI、调试、规划等 skill |
 | MCP 配置 | `.cursor/mcp.json` | 项目级 MCP（如 Playwright） |
@@ -125,6 +125,6 @@ xo-admin/
 
 ## 技术栈速查
 
-**后端**：NestJS、TypeORM、nestjs-zod、@nestjs/cache-manager、keyv-file、@nestjs/schedule、JWT  
+**后端**：NestJS、TypeORM、SQLite、nestjs-zod、@nestjs/cache-manager、keyv-file、@nestjs/schedule、JWT  
 **前端**：Vue 3、Element Plus、PureAdmin、pnpm  
 **配置**：json5（`config.*.json5`）

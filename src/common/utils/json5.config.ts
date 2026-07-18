@@ -54,7 +54,7 @@ const StandardDbConfigSchema = z
   })
   .catchall(z.any());
 
-// SQLite 配置 Schema
+// SQLite 配置 Schema（配置写 type: 'sqlite'；运行时映射为 better-sqlite3 驱动）
 const SqliteConfigSchema = z
   .object({
     open: z.boolean(),

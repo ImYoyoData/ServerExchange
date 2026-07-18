@@ -2,7 +2,6 @@ import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { access, mkdir, readdir, stat, writeFile } from 'fs/promises';
 import * as path from 'path';
 import { constants as FsConstants } from 'fs';
-import type { Dirent } from 'fs';
 import { BusinessRejectedException } from 'src/common/exceptions';
 
 export type SaveSrcFileResult = {
@@ -129,7 +128,7 @@ export class UtilsService {
     srcRoot: string,
     options: { namePrefix?: string; matchIncludes?: string },
   ): Promise<SrcListItem[]> {
-    let dirents: Dirent[];
+    let dirents;
     try {
       dirents = await readdir(dirAbs, { withFileTypes: true });
     } catch (e: unknown) {

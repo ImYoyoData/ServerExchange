@@ -43,7 +43,7 @@ export class RoleService {
       where.status = status;
     }
 
-    // 分页查询，直接在查询时转换时间字段
+    // 分页查询（时间戳在应用层转毫秒，兼容 MySQL / SQLite）
     const skip = (page - 1) * pageSize;
 
     const queryBuilder = this.roleRepository
@@ -54,8 +54,8 @@ export class RoleService {
         'role.code',
         'role.status',
         'role.remark',
-        'UNIX_TIMESTAMP(role.createdAt) * 1000 as createTime',
-        'UNIX_TIMESTAMP(role.updatedAt) * 1000 as updateTime',
+        'role.createdAt',
+        'role.updatedAt',
       ]);
 
     // 添加查询条件
@@ -79,17 +79,22 @@ export class RoleService {
       .orderBy('role.createdAt', 'DESC')
       .skip(skip)
       .take(pageSize)
-      .getRawMany();
+      .getMany();
 
-    // 格式化返回的数据，将字符串转换为数字
+    const toMs = (value: Date | string | number | null | undefined) => {
+      if (value == null) return 0;
+      const ms = value instanceof Date ? value.getTime() : new Date(value).getTime();
+      return Number.isFinite(ms) ? ms : 0;
+    };
+
     const formattedList = list.map((item) => ({
-      id: Number(item.role_id),
-      name: item.role_name,
-      code: item.role_code,
-      status: Number(item.role_status),
-      remark: item.role_remark || '',
-      createTime: Number(item.createTime),
-      updateTime: Number(item.updateTime),
+      id: Number(item.id),
+      name: item.name,
+      code: item.code,
+      status: Number(item.status),
+      remark: item.remark || '',
+      createTime: toMs(item.createdAt),
+      updateTime: toMs(item.updatedAt),
     }));
 
     return {

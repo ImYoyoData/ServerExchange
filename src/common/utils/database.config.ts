@@ -11,13 +11,16 @@ export function getDatabaseModules(): DynamicModule[] {
   const databaseModules: DynamicModule[] = [];
 
   for (const key in databaseConfigs) {
-    const config = databaseConfigs[key];
-    if (!config.open) continue;
+    const source = databaseConfigs[key];
+    if (!source.open) continue;
 
-    // 移除 open 字段，因为 TypeOrmModuleOptions 不需要它
-    // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-    // @ts-expect-error
+    // 拷贝一份，避免改写 global.CONFIG；配置写 sqlite，驱动用 better-sqlite3
+    const config: Record<string, unknown> = { ...source };
     delete config.open;
+    if (config.type === 'sqlite') {
+      config.type = 'better-sqlite3';
+    }
+
     setConfigFromEnv(config, 'logging', 'DB_LOGGING', true);
     setConfigFromEnv(config, 'logger', 'DB_LOGGING_TYPE', 'file', false); // 生产环境使用  和 开发环境使用
     setConfigFromEnv(
@@ -63,7 +66,13 @@ function setConfigFromEnv<T>(
   const isDev = process.env.NODE_ENV === 'development';
   const shouldApply = !requireDev || isDev;
   const envValue = process.env[envKey];
-  if (!config[configKey] && shouldApply && envValue === 'true') {
+  if (envValue === undefined) return;
+  // 仅当配置未显式设置时才用环境变量覆盖（允许配置里写 synchronize: false）
+  if (config[configKey] !== undefined && config[configKey] !== null) return;
+  if (!shouldApply) return;
+  if (envValue === 'true') {
     config[configKey] = defaultValue;
+  } else if (envValue === 'false' && typeof defaultValue === 'boolean') {
+    config[configKey] = false as T;
   }
 }

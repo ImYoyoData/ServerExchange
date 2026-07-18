@@ -18,8 +18,8 @@
 
 - **Node.js** ≥ 20.0.0  
 - **pnpm** ≥ 9.0.0（全局安装：`npm i -g pnpm`）  
-- **MySQL**（默认，见 `config.*.json5` 中 `database`；可按配置切换 PostgreSQL / SQLite）  
-- **本地缓存**（内存 + 文件，见 `config.*.json5` 的 `cache`；字典树与管理员 accessToken 会话等，无需 Redis）
+- **SQLite**（默认，配置 `type: 'sqlite'`，库文件 `./data/app.db`；可用 `node scripts/import-sys-sql-to-sqlite.cjs` 从只读 `sys.sql` 导入）  
+- 可选 MySQL / PostgreSQL（在 `config.*.json5` 的 `database` 中切换）
 
 > 存放代码的目录及父级路径**避免中文、韩文、日文及空格**，否则可能影响依赖安装或启动。
 
@@ -98,7 +98,7 @@ docker run --rm \
 
 - **框架**：NestJS 11、Express  
 - **校验**：nestjs-zod + Zod（全局 `ZodValidationPipe`）  
-- **ORM**：TypeORM + **mysql2**（可按配置使用 PostgreSQL / SQLite）  
+- **ORM**：TypeORM + SQLite（默认可切换 MySQL / PostgreSQL）  
 - **缓存**：`@nestjs/cache-manager` + Keyv（内存 LRU + `keyv-file` 文件持久化）  
 - **认证**：`@nestjs/jwt`，管理端路由由 `AdminGuard` + 本地 KV 会话校验  
 - **其它**：dayjs、log4js、限流（Throttler）、静态资源、定时任务（Schedule）、可选 LangChain / LangGraph（Agent 模块）
@@ -194,6 +194,24 @@ nest-admin-xo-server/
             ├── ms-utils.ts
             └── first-error.interceptor.ts
 ```
+
+---
+
+### Windows 便携包（无需安装 Node）
+
+在开发机执行：
+
+```bash
+pnpm run pack:win
+```
+
+产物目录：`release/ServerExchange-portable/`（内容 = `dist/` + 根目录 `node.exe`）
+
+- 启动：`start.bat` → `node.exe src\main.js`（`NODE_ENV=production`）
+- 用户无需安装 Node
+- SQLite：`data/app.db`；配置：`config.production.json5`
+
+重新从 `sys.sql` 生成库文件：`node scripts/import-sys-sql-to-sqlite.cjs`
 
 ---
 
