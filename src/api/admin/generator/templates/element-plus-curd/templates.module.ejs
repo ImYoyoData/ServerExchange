@@ -1,0 +1,21 @@
+<%#
+  与 templates.constroller / templates.service 配套。
+  Entity 已由表名生成：./entities/<table-kebab>.entity.ts，类名为 className。
+  渲染上下文: className, tableName, moduleName
+%>
+<%
+const kebab = tableName.replace(/_/g, '-');
+-%>
+import { Module } from '@nestjs/common';
+import { TypeOrmModule } from '@nestjs/typeorm';
+import { <%- className %> } from './entities/<%- kebab %>.entity';
+import { <%- className %>Service } from './<%- kebab %>.service';
+import { <%- className %>Controller } from './<%- kebab %>.controller';
+
+@Module({
+  imports: [TypeOrmModule.forFeature([<%- className %>])],
+  controllers: [<%- className %>Controller],
+  providers: [<%- className %>Service],
+  exports: [<%- className %>Service],
+})
+export class <%- className %>Module {}

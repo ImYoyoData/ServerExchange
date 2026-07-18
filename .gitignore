@@ -1,0 +1,90 @@
+# compiled output
+/dist
+/node_modules
+/admin-web-ui/node_modules
+/build
+
+# Logs
+logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+
+# OS
+.DS_Store
+
+# Tests
+/coverage
+/.nyc_output
+
+# IDEs and editors
+/.idea
+.project
+.classpath
+.c9/
+*.launch
+.settings/
+*.sublime-workspace
+
+# IDE - VSCode
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+
+# dotenv environment variable files
+.env
+.env.*
+!.env.example
+*.local*
+
+# Codegraph local index
+.codegraph/
+
+# temp directory
+.temp
+.tmp
+
+# Runtime data
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# Diagnostic reports (https://nodejs.org/api/report.html)
+report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
+# 使用 pnpm：提交 pnpm-lock.yaml；若误用 npm 可忽略其锁文件
+/package-lock.json
+/pnpm-lock.yaml
+
+# admin-web (merged from admin-web/.gitignore)
+/admin-web/node_modules
+/admin-web/dist
+/admin-web/dist-ssr
+/public/admin
+/admin-web/.eslintcache
+/admin-web/report.html
+/admin-web/vite.config.*.timestamp*
+/admin-web/yarn.lock
+/admin-web/.pnpm-error.log*
+/admin-web/.pnpm-debug.log
+/admin-web/tests/**/coverage/
+/admin-web/tsconfig.tsbuildinfo
+/admin-web/pnpm-lock.yaml
+
+# Visual Studio files
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+
+# Skills CLI auto-generated agent directories (use .cursor/skills only)
+/.agents/
+/.adal/
+/.claude/
+/.windsurf/
+skills-lock.json

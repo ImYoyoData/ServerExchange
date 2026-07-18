@@ -1,0 +1,168 @@
+<%#
+  前端 API（Vue3 + TS）。输出：@/api/{table-kebab}.ts
+  规则：http.request + baseUrlApi；路径 = 本文件相对 @/api/ 的目录前缀 + 接口后缀（不要写死 admin）
+  需在同级或 @/api 下提供 ./utils 导出 baseUrlApi
+  渲染上下文:
+  - apiPathPrefix（推荐）: 生成文件相对 @/api/ 的路径前缀，无首尾 /，如 admin/system/user、modules/foo
+    一般由生成器根据「落盘路径」计算：去掉 @/api/ 与文件名，剩余段用 / 连接
+  - 未传 apiPathPrefix 时回退为 moduleName（仍不含固定 admin）
+  - className, tableName, moduleName, tableComment, fields...
+%>
+<%
+const kebab = tableName.replace(/_/g, '-');
+const apiPrefix = (typeof apiPathPrefix !== 'undefined' &&
+  apiPathPrefix !== null &&
+  String(apiPathPrefix).trim() !== '')
+  ? String(apiPathPrefix).replace(/^\/+|\/+$/g, '').replace(/\/+/g, '/')
+  : String(moduleName || '')
+      .replace(/^\/+|\/+$/g, '')
+      .replace(/\/+/g, '/');
+function isPk(f) { return f.isPrimary === true || f.name === 'id'; }
+function qc(f) { return f.queryComponent || 'input'; }
+function fc(f) { return f.formComponent || 'input'; }
+function isDateRangeQuery(f) {
+  if (!f.isQuery) return false;
+  if (String(f.queryOperator) !== 'between') return false;
+  return qc(f) === 'date';
+}
+const rangeQueryFields = fields.filter(isDateRangeQuery);
+const scalarPageQueryFields = fields.filter(function (f) {
+  return f.isQuery === true && !isDateRangeQuery(f);
+});
+function isQueryMulti(f) {
+  return f.isMultiSelect === true || qc(f) === 'checkbox';
+}
+function tsToTSType(t) {
+  const s = (t || 'string').toLowerCase();
+  if (s === 'bigint' || s === 'number' || s === 'int') return 'number';
+  if (s === 'boolean' || s === 'bool') return 'boolean';
+  if (s === 'date') return 'string';
+  return 'string';
+}
+function tsToRowType(f) {
+  if (f.isMultiSelect === true) {
+    return tsToTSType(f.tsType) + '[]';
+  }
+  return tsToTSType(f.tsType);
+}
+function tsPageQueryScalarType(f) {
+  if (isQueryMulti(f)) {
+    return tsToTSType(f.tsType) + '[]';
+  }
+  return tsToTSType(f.tsType);
+}
+-%>
+import { http } from '@/utils/http';
+import { baseUrlApi } from './utils';
+
+/**
+ * 兼容常见两种返回：① AxiosResponse → body 在 .data；② 已是 { success, data }（BusinessPass）
+ * 若你项目的 http.request 已直接返回内层 T，可删掉 .then(unwrapBusiness) 仅保留 request。
+ */
+export function unwrapBusiness<T>(raw: unknown): T {
+  let x = raw as any;
+  if (x?.data !== undefined && typeof x.status === 'number') {
+    x = x.data;
+  }
+  if (x?.success === false) {
+    throw new Error(x?.message || '请求失败');
+  }
+  if (x?.data !== undefined && typeof x === 'object' && 'success' in x) {
+    return x.data as T;
+  }
+  return x as T;
+}
+
+/** 与后端 BusinessPass 包装一致 */
+export type BusinessRes<T> = {
+  success: boolean;
+  data: T;
+  message?: string;
+  code?: string | number;
+  timestamp?: number;
+};
+
+export type PageResult<T> = {
+  list: T[];
+  total: number;
+  pageSize: number;
+  currentPage: number;
+  totalPages: number;
+};
+
+/** 列表行（与实体字段对齐，可按需删减） */
+export type <%- className %>Row = {
+<% fields.forEach(function (f, i) { -%>
+  <%- f.name %>: <%- tsToRowType(f) %>;
+<% }); -%>
+  createdAt?: string;
+  updatedAt?: string;
+};
+
+/** 分页查询参数（日期范围字段为 xxxBegin / xxxEnd，与后端 DTO 一致） */
+export type <%- className %>PageQuery = {
+  page?: number;
+  pageSize?: number;
+<% rangeQueryFields.forEach(function (f) { -%>
+  <%- f.name %>Begin?: string;
+  <%- f.name %>End?: string;
+<% }); -%>
+<% scalarPageQueryFields.forEach(function (f) { -%>
+  <%- f.name %>?: <%- tsPageQueryScalarType(f) %>;
+<% }); -%>
+};
+
+/** 新增 body */
+<% const insertFs = fields.filter(function (f) { return f.isInsert !== false && !isPk(f); }); const updateFs = fields.filter(function (f) { return f.isUpdate !== false && !isPk(f); }); -%>
+<% if (insertFs.length) { -%>
+export type <%- className %>CreateBody = {
+<% insertFs.forEach(function (f) { -%>
+  <%- f.name %>: <%- tsToRowType(f) %>;
+<% }); -%>
+};
+<% } else { -%>
+export type <%- className %>CreateBody = Record<string, never>;
+<% } -%>
+
+/** 编辑 body */
+export type <%- className %>UpdateBody = {
+  id: number;
+<% if (updateFs.length) { updateFs.forEach(function (f) { -%>
+  <%- f.name %>?: <%- tsToRowType(f) %>;
+<% }); } -%>
+};
+
+/** 分页列表 */
+export function fetch<%- className %>Page(params: <%- className %>PageQuery) {
+  return http
+    .request<unknown>('get', baseUrlApi('<%- apiPrefix %>/page'), {
+      params,
+    })
+    .then((raw) =>
+      unwrapBusiness<PageResult<<%- className %>Row>>(raw),
+    );
+}
+
+/** 新增 */
+export function create<%- className %>(data: <%- className %>CreateBody) {
+  return http
+    .request<unknown>('post', baseUrlApi('<%- apiPrefix %>'), { data })
+    .then((raw) => unwrapBusiness<<%- className %>Row>(raw));
+}
+
+/** 编辑 */
+export function update<%- className %>(data: <%- className %>UpdateBody) {
+  return http
+    .request<unknown>('put', baseUrlApi('<%- apiPrefix %>'), { data })
+    .then((raw) => unwrapBusiness<<%- className %>Row>(raw));
+}
+
+/** 删除 */
+export function remove<%- className %>(id: number) {
+  return http
+    .request<unknown>(
+      'delete',
+      baseUrlApi(`<%- apiPrefix %>/${id}`),
+    )
+    .then((raw) => unwrapBusiness<{ affected?: number }>(raw));
+}

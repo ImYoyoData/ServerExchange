@@ -1,0 +1,12 @@
+node_modules
+.idea
+dist
+docker.bat
+.dockerignore
+.git
+.gitignore
+README.md
+*.log
+Dockerfile
+# 过滤前端的 因为最终会编译的
+admin-web-ui

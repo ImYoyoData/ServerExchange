@@ -1,0 +1,102 @@
+<%#
+  输出文件名建议：<table-kebab>.controller.ts（本仓库模板文件名 constroller 为拼写习惯，生成时请用 .controller.ts）
+  与 code-table 字段配置一致：
+  - 查询/列表：GET page；日期范围：queryOperator=between 且 queryComponent=date → 字段Begin/字段End
+  - 新增：POST body 为 Create DTO（isInsert 且非主键）
+  - 修改：PUT body 为 Update DTO（id + isUpdate 且非主键）
+  Entity 由 generator/entities + 表名生成；className、fields 须与实体属性一致。
+  渲染上下文: className, tableName, moduleName, tableComment,
+  fields: { name, tsType, isPrimary?, isQuery?, isInsert?, isUpdate? }[]
+%>
+<%
+const kebab = tableName.replace(/_/g, '-');
+const seg = moduleName.split('/').filter(Boolean).length;
+const decImport = '../'.repeat(seg) + 'decorators';
+const commonImport = '../'.repeat(2 + seg) + 'common/exceptions';
+const lower = className.charAt(0).toLowerCase() + className.slice(1);
+-%>
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Post,
+  Put,
+  Query,
+} from '@nestjs/common';
+import { ApiBody, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { <%- className %>Service } from './<%- kebab %>.service';
+import { Query<%- className %>PageDto } from './dto/<%- kebab %>.dto';
+import { Create<%- className %>Dto } from './dto/<%- kebab %>.dto';
+import { Update<%- className %>Dto } from './dto/<%- kebab %>.dto';
+import { BusinessPass, BusinessRejectedException } from '<%- commonImport %>';
+import { AdminOnly } from '<%- decImport %>';
+
+@ApiTags('<%- tableComment || className %>')
+@Controller('admin/<%- moduleName %>')
+export class <%- className %>Controller {
+  constructor(private readonly <%- lower %>Service: <%- className %>Service) {}
+
+  /**
+   * 分页列表 + 条件查询（条件字段由配置 isQuery 决定）
+   */
+  @Get('page')
+  @ApiOperation({ summary: '分页列表（<%- tableComment || className %>）' })
+  async page(@Query() query: Query<%- className %>PageDto) {
+    try {
+      return BusinessPass(await this.<%- lower %>Service.page(query));
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      throw new BusinessRejectedException(msg || '查询列表失败');
+    }
+  }
+
+  /**
+   * 新增（字段由配置 isInsert 决定，不含主键）
+   */
+  @Post()
+  @ApiOperation({ summary: '新增（<%- tableComment || className %>）' })
+  @ApiBody({ type: Create<%- className %>Dto })
+  async create(@Body() body: Create<%- className %>Dto) {
+    try {
+      return BusinessPass(await this.<%- lower %>Service.create(body));
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      throw new BusinessRejectedException(msg || '新增失败');
+    }
+  }
+
+  /**
+   * 修改（字段由配置 isUpdate 决定，含 id）
+   */
+  @Put()
+  @ApiOperation({ summary: '编辑（<%- tableComment || className %>）' })
+  @ApiBody({ type: Update<%- className %>Dto })
+  async update(@Body() body: Update<%- className %>Dto) {
+    try {
+      return BusinessPass(await this.<%- lower %>Service.update(body));
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      throw new BusinessRejectedException(msg || '更新失败');
+    }
+  }
+
+  /**
+   * 删除
+   */
+  @Delete(':id')
+  @ApiOperation({ summary: '删除（<%- tableComment || className %>）' })
+  async remove(@Param('id') id: string) {
+    const num = Number(id);
+    if (!Number.isInteger(num) || num < 1) {
+      throw new BusinessRejectedException('参数错误');
+    }
+    try {
+      return BusinessPass(await this.<%- lower %>Service.remove(num));
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      throw new BusinessRejectedException(msg || '删除失败');
+    }
+  }
+}

@@ -1,0 +1,31 @@
+<script setup lang="ts">
+import { PropType } from "vue";
+import { ListItem } from "../data";
+import NoticeItem from "./NoticeItem.vue";
+import { transformI18n } from "@/plugins/i18n";
+
+defineProps({
+  list: {
+    type: Array as PropType<Array<ListItem>>,
+    default: () => []
+  },
+  emptyText: {
+    type: String,
+    default: ""
+  }
+});
+
+const emit = defineEmits<{ "open-detail": [item: ListItem] }>();
+</script>
+
+<template>
+  <div v-if="list.length">
+    <NoticeItem
+      v-for="(item, index) in list"
+      :key="item.messageId ?? index"
+      :noticeItem="item"
+      @open-detail="emit('open-detail', $event)"
+    />
+  </div>
+  <el-empty v-else :description="transformI18n(emptyText)" />
+</template>

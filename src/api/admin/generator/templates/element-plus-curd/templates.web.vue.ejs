@@ -1,0 +1,366 @@
+<%#
+  列表 + 查询 + 增删改（Vue3 + script setup + TS + Element Plus）
+  输出建议：@/views/{moduleName}/{table-kebab}.vue（勿在 ejs 注释块内写插值标签，其中的百分号尖括号会提前结束注释）
+  API：import from '@/api/{table-kebab}.ts'
+  同目录：{table-kebab}-form.vue（templates.web.vue.form）
+  日期范围：queryOperator=between 且 queryComponent=date → 查询区 datetimerange，提交 xxxBegin/xxxEnd
+  多选：isMultiSelect=true 或查询 checkbox → 查询/表单值为数组；select 查询加 multiple；字典：dicts + InitDict + GetDict['xxx']（@/hooks/dict）
+  渲染上下文: className, tableName, moduleName, tableComment,
+  fields: { name, tsType, comment?, isPrimary?, isList?, isQuery?, isInsert?, isMultiSelect?, queryOperator?, queryComponent?, formComponent?, dictCode? }[]
+%>
+<%
+const kebab = tableName.replace(/_/g, '-');
+function isPk(f) { return f.isPrimary === true || f.name === 'id'; }
+function qc(f) { return f.queryComponent || 'input'; }
+function fc(f) { return f.formComponent || 'input'; }
+function isQueryMulti(f) {
+  return f.isMultiSelect === true || qc(f) === 'checkbox';
+}
+function isFormMulti(f) {
+  return f.isMultiSelect === true || fc(f) === 'checkbox';
+}
+function isDateRangeQuery(f) {
+  if (!f.isQuery) return false;
+  if (String(f.queryOperator) !== 'between') return false;
+  return qc(f) === 'date';
+}
+const listFs = fields.filter(function (f) { return f.isList === true; });
+const queryFs = fields.filter(function (f) { return f.isQuery === true; });
+const rangeQueryFs = queryFs.filter(isDateRangeQuery);
+const scalarQueryFs = queryFs.filter(function (f) { return !isDateRangeQuery(f); });
+const insertFs = fields.filter(function (f) { return f.isInsert !== false && !isPk(f); });
+function comp(f) { return f.queryComponent || 'input'; }
+function hasDictCode(f) {
+  return !!String(f.dictCode || '').trim();
+}
+const formCompName = className + 'Form';
+function escapeForSingleQuotedJs(s) {
+  return String(s)
+    .replace(/\\/g, '\\\\')
+    .replace(/'/g, "\\'")
+    .replace(/\r/g, '\\r')
+    .replace(/\n/g, '\\n');
+}
+function collectQueryDictCodes(qfs) {
+  const set = new Set();
+  for (let i = 0; i < qfs.length; i++) {
+    const f = qfs[i];
+    const c = comp(f);
+    if (c !== 'select' && c !== 'radio' && c !== 'checkbox') continue;
+    const dc = (f.dictCode || '').trim();
+    if (dc) set.add(dc);
+  }
+  return Array.from(set).sort();
+}
+const listPageDictCodes = collectQueryDictCodes(scalarQueryFs);
+-%>
+<template>
+  <el-card shadow="never">
+    <template #header>
+      <span><%- tableComment || className %></span>
+    </template>
+
+    <el-form :inline="true" :model="query" class="search-form" @submit.prevent="reload">
+<% rangeQueryFs.forEach(function (f) { -%>
+      <el-form-item label="<%- f.comment || f.name %>">
+        <el-date-picker
+          v-model="query.<%- f.name %>Range"
+          type="datetimerange"
+          range-separator="至"
+          start-placeholder="开始时间"
+          end-placeholder="结束时间"
+          value-format="YYYY-MM-DD HH:mm:ss"
+          style="width: 360px"
+        />
+      </el-form-item>
+<% }); -%>
+<% scalarQueryFs.forEach(function (f) { -%>
+<% if (comp(f) === 'input') { -%>
+      <el-form-item label="<%- f.comment || f.name %>">
+        <el-input v-model="query.<%- f.name %>" clearable placeholder="<%- f.comment || f.name %>" />
+      </el-form-item>
+<% } else if (comp(f) === 'select') { -%>
+      <el-form-item label="<%- f.comment || f.name %>">
+        <el-select
+          v-model="query.<%- f.name %>"
+          clearable
+          filterable
+          placeholder="请选择"
+          <% if (f.isMultiSelect === true) { %>multiple collapse-tags collapse-tags-tooltip<% } %>
+          style="width: <%- f.isMultiSelect === true ? 260 : 180 %>px"
+        >
+          <el-option
+            v-for="item in GetDict['<%- escapeForSingleQuotedJs((f.dictCode || '').trim()) %>']"
+            :key="item.value"
+            :label="item.label"
+            :value="item.value"
+          />
+        </el-select>
+      </el-form-item>
+<% } else if (comp(f) === 'radio') { -%>
+      <el-form-item label="<%- f.comment || f.name %>">
+        <el-radio-group v-model="query.<%- f.name %>">
+          <el-radio
+            v-for="item in GetDict['<%- escapeForSingleQuotedJs((f.dictCode || '').trim()) %>']"
+            :key="item.value"
+            :value="item.value"
+          >{{ item.label }}</el-radio>
+        </el-radio-group>
+      </el-form-item>
+<% } else if (comp(f) === 'checkbox') { -%>
+      <el-form-item label="<%- f.comment || f.name %>">
+        <el-checkbox-group v-model="query.<%- f.name %>">
+          <el-checkbox
+            v-for="item in GetDict['<%- escapeForSingleQuotedJs((f.dictCode || '').trim()) %>']"
+            :key="item.value"
+            :value="item.value"
+          >{{ item.label }}</el-checkbox>
+        </el-checkbox-group>
+      </el-form-item>
+<% } else if (comp(f) === 'date') { -%>
+      <el-form-item label="<%- f.comment || f.name %>">
+        <el-date-picker
+          v-model="query.<%- f.name %>"
+          type="datetime"
+          value-format="YYYY-MM-DD HH:mm:ss"
+          placeholder="选择时间"
+          style="width: 200px"
+        />
+      </el-form-item>
+<% } else { -%>
+      <el-form-item label="<%- f.comment || f.name %>">
+        <el-input v-model="query.<%- f.name %>" clearable />
+      </el-form-item>
+<% } -%>
+<% }); -%>
+      <el-form-item>
+        <el-button type="primary" native-type="submit" :loading="loading">查询</el-button>
+        <el-button @click="resetQuery">重置</el-button>
+        <el-button type="success" @click="openCreate">新增</el-button>
+      </el-form-item>
+    </el-form>
+
+    <el-table :data="tableData" border stripe v-loading="loading" class="mt-4">
+<% if (listFs.length) { listFs.forEach(function (f) { -%>
+<% if (hasDictCode(f) && f.isMultiSelect === true) { -%>
+      <el-table-column prop="<%- f.name %>" label="<%- f.comment || f.name %>" min-width="160">
+        <template #default="{ row }">
+          <template v-if="Array.isArray(row.<%- f.name %>)">
+            <DictTag
+              v-for="v in row.<%- f.name %>"
+              :key="String(v)"
+              code="<%- (f.dictCode || '').trim() %>"
+              :value="v"
+            />
+          </template>
+        </template>
+      </el-table-column>
+<% } else if (hasDictCode(f)) { -%>
+      <el-table-column prop="<%- f.name %>" label="<%- f.comment || f.name %>" min-width="140">
+        <template #default="{ row }">
+          <DictTag code="<%- (f.dictCode || '').trim() %>" :value="row.<%- f.name %>" />
+        </template>
+      </el-table-column>
+<% } else if (f.isMultiSelect === true) { -%>
+      <el-table-column label="<%- f.comment || f.name %>" min-width="140" show-overflow-tooltip>
+        <template #default="{ row }">
+          {{ Array.isArray(row.<%- f.name %>) ? row.<%- f.name %>.join(', ') : row.<%- f.name %> }}
+        </template>
+      </el-table-column>
+<% } else { -%>
+      <el-table-column prop="<%- f.name %>" label="<%- f.comment || f.name %>" min-width="120" show-overflow-tooltip />
+<% } -%>
+<% }); } else { -%>
+      <el-table-column prop="id" label="ID" width="80" />
+<% } -%>
+      <el-table-column prop="createdAt" label="创建时间" min-width="170" show-overflow-tooltip />
+      <el-table-column label="操作" width="160" fixed="right">
+        <template #default="{ row }">
+          <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
+          <el-button link type="danger" @click="onRemove(row)">删除</el-button>
+        </template>
+      </el-table-column>
+    </el-table>
+
+    <div class="pagination">
+      <el-pagination
+        v-model:current-page="query.page"
+        v-model:page-size="query.pageSize"
+        :total="total"
+        :page-sizes="[10, 20, 50, 100]"
+        layout="total, sizes, prev, pager, next, jumper"
+        background
+        @size-change="reload"
+        @current-change="reload"
+      />
+    </div>
+
+    <el-dialog v-model="dialogVisible" :title="dialogTitle" width="560px" destroy-on-close @closed="onDialogClosed">
+      <<%- formCompName %> ref="innerFormRef" v-model="dialogForm" :mode="dialogMode" />
+      <template #footer>
+        <el-button @click="dialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="submitLoading" @click="submitDialog">确定</el-button>
+      </template>
+    </el-dialog>
+  </el-card>
+</template>
+
+<script setup lang="ts">
+import { reactive, ref, computed, onMounted } from 'vue';
+import { ElMessage, ElMessageBox } from 'element-plus';
+import <%- formCompName %> from './<%- kebab %>-form.vue';
+import { GetDict, InitDict } from "@/hooks/dict";
+import {
+  fetch<%- className %>Page,
+  create<%- className %>,
+  update<%- className %>,
+  remove<%- className %>,
+  type <%- className %>Row,
+  type <%- className %>PageQuery,
+} from '@/api/<%- kebab %>.ts';
+
+<% if (listPageDictCodes.length === 0) { -%>
+/** 当前页面所用字典（与全局 InitDict 配置一致，可按需增删） */
+const dicts: string[] = []; // 当前页面所用字典
+<% } else { -%>
+/** 当前页面所用字典（与全局 InitDict 配置一致，可按需增删） */
+const dicts: string[] = [
+<% listPageDictCodes.forEach(function (code, i) { -%>
+  '<%- escapeForSingleQuotedJs(code) %>'<%- i < listPageDictCodes.length - 1 ? ',' : '' %>
+<% }); -%>
+];
+<% } -%>
+
+const loading = ref(false);
+const submitLoading = ref(false);
+const tableData = ref<<%- className %>Row[]>([]);
+const total = ref(0);
+
+const query = reactive<Record<string, unknown>>({
+  page: 1,
+  pageSize: 10,
+<% rangeQueryFs.forEach(function (f) { -%>
+  <%- f.name %>Range: undefined as [string, string] | undefined,
+<% }); -%>
+<% scalarQueryFs.forEach(function (f) { -%>
+  <%- f.name %>: <% if (isQueryMulti(f)) { %>[]<% } else { %>undefined<% } %>,
+<% }); -%>
+});
+
+const dialogVisible = ref(false);
+const dialogMode = ref<'create' | 'edit'>('create');
+const dialogTitle = computed(() =>
+  dialogMode.value === 'create' ? '新增 — <%- tableComment || className %>' : '编辑 — <%- tableComment || className %>',
+);
+
+const dialogForm = ref<Record<string, unknown>>({});
+const innerFormRef = ref<{ validate: () => Promise<void> } | null>(null);
+
+function buildPageQuery(): <%- className %>PageQuery {
+  const params: <%- className %>PageQuery = {
+    page: Number(query.page) || 1,
+    pageSize: Number(query.pageSize) || 10,
+  };
+<% rangeQueryFs.forEach(function (f) { -%>
+  {
+    const r = query.<%- f.name %>Range as [string, string] | undefined;
+    if (Array.isArray(r) && r[0] && r[1]) {
+      params.<%- f.name %>Begin = r[0];
+      params.<%- f.name %>End = r[1];
+    }
+  }
+<% }); -%>
+<% scalarQueryFs.forEach(function (f) { -%>
+  (params as any).<%- f.name %> = query.<%- f.name %>;
+<% }); -%>
+  return params;
+}
+
+async function reload() {
+  loading.value = true;
+  try {
+    const res = await fetch<%- className %>Page(buildPageQuery());
+    tableData.value = res.list;
+    total.value = res.total;
+  } finally {
+    loading.value = false;
+  }
+}
+
+onMounted(() => {
+  InitDict(dicts);
+  void reload();
+});
+
+function resetQuery() {
+  query.page = 1;
+  query.pageSize = 10;
+<% rangeQueryFs.forEach(function (f) { -%>
+  query.<%- f.name %>Range = undefined;
+<% }); -%>
+<% scalarQueryFs.forEach(function (f) { -%>
+  query.<%- f.name %> = <% if (isQueryMulti(f)) { %>[]<% } else { %>undefined<% } %>;
+<% }); -%>
+  reload();
+}
+
+function openCreate() {
+  dialogMode.value = 'create';
+  dialogForm.value = {
+<% insertFs.forEach(function (f, i) { -%>
+    <%- f.name %>: <% if (isFormMulti(f)) { %>[]<% } else if ((f.tsType || '').toLowerCase() === 'boolean') { %>false<% } else if ((f.tsType || '').toLowerCase() === 'number' || (f.tsType || '').toLowerCase() === 'bigint') { %>undefined<% } else { %>''<% } %><%- i < insertFs.length - 1 ? ',' : '' %>
+<% }); -%>
+  };
+  dialogVisible.value = true;
+}
+
+function openEdit(row: <%- className %>Row) {
+  dialogMode.value = 'edit';
+  dialogForm.value = { ...row };
+  dialogVisible.value = true;
+}
+
+function onDialogClosed() {
+  dialogForm.value = {};
+}
+
+async function submitDialog() {
+  await innerFormRef.value?.validate?.();
+  submitLoading.value = true;
+  try {
+    if (dialogMode.value === 'create') {
+      await create<%- className %>(dialogForm.value as any);
+      ElMessage.success('新增成功');
+    } else {
+      await update<%- className %>(dialogForm.value as any);
+      ElMessage.success('保存成功');
+    }
+    dialogVisible.value = false;
+    await reload();
+  } finally {
+    submitLoading.value = false;
+  }
+}
+
+async function onRemove(row: <%- className %>Row) {
+  await ElMessageBox.confirm('确定删除该条记录？', '提示', { type: 'warning' });
+  await remove<%- className %>(row.id);
+  ElMessage.success('已删除');
+  await reload();
+}
+
+</script>
+
+<style scoped>
+.search-form {
+  margin-bottom: 8px;
+}
+.mt-4 {
+  margin-top: 16px;
+}
+.pagination {
+  margin-top: 16px;
+  display: flex;
+  justify-content: flex-end;
+}
+</style>

@@ -1,0 +1,99 @@
+//  容器访问宿主机
+//  windows 可以用 host.docker.internal
+//  linux 可以用 172.17.0.1
+//  如果 linux 也想用 host.docker.internal  你可以设置网络映射网关实现
+{
+  httpPort: 8080, // http监听端口 修改这里别忘记docker里面的了
+  // AI Agent（TypeORM 实体生成、对话等）
+  // provider: openai | anthropic
+  // 生产密钥请写在 config.production.local.json5
+  agent: {
+    provider: 'openai',
+    url: 'https://api.siliconflow.cn/v1',
+    key: 'sk-xxxxxxxxxxx',
+    model: 'deepseek-ai/DeepSeek-V3',
+  },
+  redis: {
+    default: {
+      open: true,
+      // 是否开启
+      type: 'single',
+      url: 'redis://127.0.0.1:6379',
+      options: {
+        password: '123456',
+        db: 0,
+      },
+    },
+    rs2: {
+      open: false,
+      // 是否开启
+      type: 'cluster',
+      nodes: [
+        {
+          host: '127.0.0.1',
+          port: 6379
+        },
+        {
+          host: '127.0.0.1',
+          port: 6380
+        }
+      ],
+      options: {
+        scaleReads: 'master',
+        // 可选: 'master' | 'slave' | 'all' | 'nearest'
+        db: 0,
+        // 集群只能用 db 0
+        redisOptions: {
+          password: '123456',
+          // 密码
+          keyPrefix: 'app:',
+          // 所有键的前缀
+        },
+      }
+    }
+  },
+  // 数据库配置
+  database: {
+    default: {
+      open: true,
+      // 是否开启
+      type: 'mysql',
+      // 默认已经安装了 mysql2
+      host: '127.0.0.1',
+      port: 3306,
+      username: 'yoyo',
+      password: '123456',
+      database: 'test',
+      //      以下配置和.env重合 但是如果实现以下的配置 就会失去对开发环境判断的逻辑
+      //      entityPrefix: 'na_' //优先级会大于全局 .env 下的
+      //      dateStrings:true // 优先级会大于全局 .env 下的
+      //      synchronize: false // 优先级会大于全局 .env 下的
+      // 开启连接池
+      pool: {
+        max: 30,
+        min: 3,
+        idleTimeoutMillis: 60000,
+        connectionTimeoutMillis: 5000,
+      },
+    },
+    pg1: {
+      open: false,
+      // 是否开启
+      type: 'postgres',
+      // 记得 pnpm add pg
+      host: '127.0.0.1',
+      port: 5432,
+      username: 'yoyo',
+      password: '123456',
+      database: 'test'
+    },
+    // sqlite
+    site: {
+      open: false,
+      // 是否开启
+      type: 'sqlite',
+      // 记得 pnpm add sqlite3
+      database: 'test.db'
+    }
+  }
+}

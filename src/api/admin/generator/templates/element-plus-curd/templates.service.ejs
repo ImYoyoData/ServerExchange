@@ -1,0 +1,173 @@
+<%#
+  Entity 请按数据表通过既有流程生成（如 generator/entities + 指定表名），勿用 ejs 实体模板。
+  本模板假定已存在 ./entities/<table-kebab>.entity.ts 且 export 的类名为 className。
+  日期范围：queryOperator=between 且 queryComponent=date（与 templates.dto 一致）
+  渲染上下文: className, tableName, moduleName, tableComment,
+  fields: { name, tsType, isPrimary?, isQuery?, isMultiSelect?, queryOperator?, queryComponent?, formComponent?, isInsert?, isUpdate? }[]
+%>
+<%
+function isPk(f) { return f.isPrimary === true || f.name === 'id'; }
+function qc(f) { return f.queryComponent || 'input'; }
+function fc(f) { return f.formComponent || 'input'; }
+function isDateLikeTs(f) {
+  const s = String(f.tsType || '').toLowerCase();
+  return s === 'date' || s.includes('datetime') || s.includes('timestamp');
+}
+function isNumberLike(f) {
+  const t = String(f.tsType || '').toLowerCase();
+  return t === 'number' || t === 'bigint' || t === 'int' || t.includes('int') || t === 'double' || t === 'float' || t === 'decimal';
+}
+function isDateRangeQuery(f) {
+  if (!f.isQuery) return false;
+  if (String(f.queryOperator) !== 'between') return false;
+  return qc(f) === 'date';
+}
+function isQueryMulti(f) {
+  return f.isMultiSelect === true || qc(f) === 'checkbox';
+}
+const queryFields = fields.filter(function (f) { return f.isQuery === true; });
+const rangeQueryFields = queryFields.filter(isDateRangeQuery);
+const scalarQueryFields = queryFields.filter(function (f) { return !isDateRangeQuery(f); });
+const insertFields = fields.filter(function (f) { return f.isInsert !== false && !isPk(f); });
+const updateFields = fields.filter(function (f) { return f.isUpdate !== false && !isPk(f); });
+const seg = moduleName.split('/').filter(Boolean).length;
+const commonImport = '../'.repeat(2 + seg) + 'common/exceptions';
+-%>
+import { Injectable } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { BusinessRejectedException } from '<%- commonImport %>';
+import { <%- className %> } from './entities/<%- tableName.replace(/_/g, '-') %>.entity';
+import { Query<%- className %>PageDto } from './dto/<%- tableName.replace(/_/g, '-') %>.dto';
+import { Create<%- className %>Dto } from './dto/<%- tableName.replace(/_/g, '-') %>.dto';
+import { Update<%- className %>Dto } from './dto/<%- tableName.replace(/_/g, '-') %>.dto';
+
+@Injectable()
+export class <%- className %>Service {
+  constructor(
+    @InjectRepository(<%- className %>)
+    private readonly <%- className.charAt(0).toLowerCase() + className.slice(1) %>Repo: Repository<<%- className %>>,
+  ) {}
+
+  /**
+   * 分页列表
+   */
+  async page(queryDto: Query<%- className %>PageDto) {
+    const {
+      page = 1,
+      pageSize = 10,
+<% rangeQueryFields.forEach(function (f) { -%>
+      <%- f.name %>Begin,
+      <%- f.name %>End,
+<% }); -%>
+<% scalarQueryFields.forEach(function (f) { -%>
+      <%- f.name %>,
+<% }); -%>
+    } = queryDto;
+
+    const qb = this.<%- className.charAt(0).toLowerCase() + className.slice(1) %>Repo
+      .createQueryBuilder('t')
+      .orderBy('t.id', 'DESC');
+
+<% rangeQueryFields.forEach(function (f) { -%>
+    {
+      const b = <%- f.name %>Begin != null ? String(<%- f.name %>Begin).trim() : '';
+      const e = <%- f.name %>End != null ? String(<%- f.name %>End).trim() : '';
+      if (b !== '' && e !== '') {
+        qb.andWhere('t.<%- f.name %> BETWEEN :<%- f.name %>_b AND :<%- f.name %>_e', {
+          <%- f.name %>_b: b,
+          <%- f.name %>_e: e,
+        });
+      } else if (b !== '') {
+        qb.andWhere('t.<%- f.name %> >= :<%- f.name %>_b', { <%- f.name %>_b: b });
+      } else if (e !== '') {
+        qb.andWhere('t.<%- f.name %> <= :<%- f.name %>_e', { <%- f.name %>_e: e });
+      }
+    }
+
+<% }); -%>
+<% scalarQueryFields.forEach(function (f) { -%>
+<% if (isQueryMulti(f)) { -%>
+    if (Array.isArray(<%- f.name %>) && <%- f.name %>.length > 0) {
+      qb.andWhere('t.<%- f.name %> IN (:...<%- f.name %>_in)', {
+        <%- f.name %>_in: <%- f.name %>,
+      });
+    }
+<% } else if (isNumberLike(f) || String(f.tsType || '').toLowerCase() === 'boolean') { -%>
+    if (<%- f.name %> !== undefined && <%- f.name %> !== null) {
+      qb.andWhere('t.<%- f.name %> = :<%- f.name %>', { <%- f.name %> });
+    }
+<% } else if (isDateLikeTs(f) || qc(f) === 'date') { -%>
+    if (<%- f.name %> !== undefined && <%- f.name %> !== null && String(<%- f.name %>).trim() !== '') {
+      qb.andWhere('t.<%- f.name %> = :<%- f.name %>', {
+        <%- f.name %>: String(<%- f.name %>).trim(),
+      });
+    }
+<% } else { -%>
+    if (<%- f.name %> !== undefined && <%- f.name %> !== null && String(<%- f.name %>).trim() !== '') {
+      qb.andWhere('t.<%- f.name %> LIKE :<%- f.name %>', {
+        <%- f.name %>: `%${String(<%- f.name %>).trim()}%`,
+      });
+    }
+<% } -%>
+<% }); -%>
+
+    const skip = (Number(page) - 1) * Number(pageSize);
+    const take = Number(pageSize);
+
+    const [list, total] = await qb.skip(skip).take(take).getManyAndCount();
+
+    return {
+      list,
+      total,
+      pageSize: Number(pageSize),
+      currentPage: Number(page),
+      totalPages: Math.ceil(total / Number(pageSize)) || 0,
+    };
+  }
+
+  /**
+   * 新增
+   */
+  async create(dto: Create<%- className %>Dto) {
+<% if (!insertFields.length) { -%>
+    const entity = this.<%- className.charAt(0).toLowerCase() + className.slice(1) %>Repo.create({});
+<% } else { -%>
+    const entity = this.<%- className.charAt(0).toLowerCase() + className.slice(1) %>Repo.create({
+<% insertFields.forEach(function (f, i) { -%>
+      <%- f.name %>: dto.<%- f.name %><%- i < insertFields.length - 1 ? ',' : '' %>
+<% }); -%>
+    });
+<% } -%>
+    return this.<%- className.charAt(0).toLowerCase() + className.slice(1) %>Repo.save(entity);
+  }
+
+  /**
+   * 更新（按 id）
+   */
+  async update(dto: Update<%- className %>Dto) {
+    const row = await this.<%- className.charAt(0).toLowerCase() + className.slice(1) %>Repo.findOne({
+      where: { id: dto.id },
+    });
+    if (!row) {
+      throw new BusinessRejectedException('记录不存在');
+    }
+<% updateFields.forEach(function (f) { -%>
+    if (dto.<%- f.name %> !== undefined) {
+      (row as any).<%- f.name %> = dto.<%- f.name %>;
+    }
+<% }); -%>
+    return this.<%- className.charAt(0).toLowerCase() + className.slice(1) %>Repo.save(row);
+  }
+
+  /**
+   * 删除
+   */
+  async remove(id: number) {
+    const res = await this.<%- className.charAt(0).toLowerCase() + className.slice(1) %>Repo.delete(id);
+    if (!res.affected) {
+      throw new BusinessRejectedException('记录不存在或已删除');
+    }
+    return { affected: res.affected };
+  }
+}

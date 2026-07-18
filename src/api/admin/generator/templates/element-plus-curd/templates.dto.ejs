@@ -1,0 +1,141 @@
+<%#
+  字段需与已生成的 Entity（按数据表 / generator entities）属性一致；本文件不生成 entity。
+  日期范围：queryOperator=between 且 queryComponent=date → xxxBegin / xxxEnd
+  多选：isMultiSelect=true 或查询组件 checkbox → 数组 + 查询 IN；DTO/校验用 z.array
+  渲染上下文: className, tableName, moduleName, tableComment,
+  fields: { name, tsType, isPrimary?, isNullable?, isInsert?, isUpdate?, isQuery?, isMultiSelect?, queryOperator?, queryComponent?, formComponent?, comment? }[]
+%>
+<%
+function isPk(f) { return f.isPrimary === true || f.name === 'id'; }
+function qc(f) { return f.queryComponent || 'input'; }
+function fc(f) { return f.formComponent || 'input'; }
+function isDateLikeTs(f) {
+  const s = String(f.tsType || '').toLowerCase();
+  return s === 'date' || s.includes('datetime') || s.includes('timestamp');
+}
+function isNumberLike(f) {
+  const t = String(f.tsType || '').toLowerCase();
+  return t === 'number' || t === 'bigint' || t === 'int' || t.includes('int') || t === 'double' || t === 'float' || t === 'decimal';
+}
+function isDateRangeQuery(f) {
+  if (!f.isQuery) return false;
+  if (String(f.queryOperator) !== 'between') return false;
+  return qc(f) === 'date';
+}
+function isQueryMulti(f) {
+  return f.isMultiSelect === true || qc(f) === 'checkbox';
+}
+const insertFields = fields.filter(function (f) { return f.isInsert !== false && !isPk(f); });
+const updateFields = fields.filter(function (f) { return f.isUpdate !== false && !isPk(f); });
+const queryFields = fields.filter(function (f) { return f.isQuery === true; });
+const rangeQueryFields = queryFields.filter(isDateRangeQuery);
+const scalarQueryFields = queryFields.filter(function (f) { return !isDateRangeQuery(f); });
+function zodSchemaFor(f, mode) {
+  if (f.isMultiSelect === true) {
+    const t = f.tsType || 'string';
+    if (t === 'number' || t === 'bigint') {
+      if (mode === 'create') {
+        return f.isNullable
+          ? 'z.array(z.coerce.number()).optional()'
+          : 'z.array(z.coerce.number()).optional().default([])';
+      }
+      return 'z.array(z.coerce.number()).optional()';
+    }
+    if (mode === 'create') {
+      return f.isNullable
+        ? 'z.array(z.string()).optional()'
+        : 'z.array(z.string()).optional().default([])';
+    }
+    return 'z.array(z.string()).optional()';
+  }
+  const t = f.tsType || 'string';
+  if (t === 'number' || t === 'bigint') {
+    if (mode === 'query') return 'z.coerce.number().optional()';
+    if (mode === 'create') return f.isNullable ? 'z.coerce.number().optional()' : 'z.coerce.number()';
+    return 'z.coerce.number().optional()';
+  }
+  if (t === 'boolean') {
+    if (mode === 'query') return 'z.coerce.boolean().optional()';
+    if (mode === 'create') return f.isNullable ? 'z.coerce.boolean().optional()' : 'z.coerce.boolean()';
+    return 'z.coerce.boolean().optional()';
+  }
+  if (t === 'Date' || t === 'date') {
+    if (mode === 'query') return 'z.coerce.date().optional()';
+    if (mode === 'create') return f.isNullable ? 'z.coerce.date().optional()' : 'z.coerce.date()';
+    return 'z.coerce.date().optional()';
+  }
+  if (mode === 'query') return "z.string().optional().default('')";
+  if (mode === 'create') return f.isNullable ? 'z.string().optional()' : "z.string().min(1, '" + (f.comment || f.name) + "不能为空')";
+  return 'z.string().optional()';
+}
+-%>
+import { createZodDto } from 'nestjs-zod';
+import { z } from 'zod';
+
+/** 分页查询 <%- tableComment || className %> */
+export const Query<%- className %>PageSchema = z.object({
+  page: z.coerce
+    .number()
+    .optional()
+    .transform((val) => (val ? Number(val) : 1))
+    .refine((val) => val > 0, { message: '页码必须大于0' })
+    .default(1),
+  pageSize: z.coerce
+    .number()
+    .optional()
+    .transform((val) => (val ? Number(val) : 10))
+    .refine((val) => val > 0 && val <= 100, {
+      message: '每页条数必须在1-100之间',
+    })
+    .default(10),
+<% rangeQueryFields.forEach(function (f) { -%>
+  <%- f.name %>Begin: z.string().optional().default(''),
+  <%- f.name %>End: z.string().optional().default(''),
+<% }); -%>
+<% scalarQueryFields.forEach(function (f) { -%>
+<% if (isQueryMulti(f) && isNumberLike(f)) { -%>
+  <%- f.name %>: z.preprocess(
+    (val) => {
+      if (val === undefined || val === null || val === '') return undefined;
+      const arr = Array.isArray(val) ? val : [val];
+      const n = arr.map((x) => Number(x)).filter((x) => !Number.isNaN(x));
+      return n.length ? n : undefined;
+    },
+    z.array(z.coerce.number()).optional(),
+  ),
+<% } else if (isQueryMulti(f)) { -%>
+  <%- f.name %>: z.preprocess(
+    (val) => {
+      if (val === undefined || val === null || val === '') return undefined;
+      const arr = Array.isArray(val) ? val : [val];
+      const s = arr.map((x) => String(x).trim()).filter(Boolean);
+      return s.length ? s : undefined;
+    },
+    z.array(z.string()).optional(),
+  ),
+<% } else { -%>
+  <%- f.name %>: <%- zodSchemaFor(f, 'query') %>,
+<% } -%>
+<% }); -%>
+});
+
+export class Query<%- className %>PageDto extends createZodDto(Query<%- className %>PageSchema) {}
+
+/** 新增 <%- tableComment || className %> */
+export const Create<%- className %>Schema = z.object({
+<% insertFields.forEach(function (f, i) { -%>
+  <%- f.name %>: <%- zodSchemaFor(f, 'create') %><%- i < insertFields.length - 1 ? ',' : '' %>
+<% }); -%>
+});
+
+export class Create<%- className %>Dto extends createZodDto(Create<%- className %>Schema) {}
+
+/** 编辑 <%- tableComment || className %> */
+export const Update<%- className %>Schema = z.object({
+  id: z.coerce.number().int().positive('id 无效'),
+<% updateFields.forEach(function (f) { -%>
+  <%- f.name %>: <%- zodSchemaFor(f, 'update') %>,
+<% }); -%>
+});
+
+export class Update<%- className %>Dto extends createZodDto(Update<%- className %>Schema) {}

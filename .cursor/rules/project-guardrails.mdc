@@ -1,0 +1,30 @@
+---
+description: 项目核心约束与协作流程
+alwaysApply: true
+---
+
+# 项目核心约束
+
+## 禁止擅自修改
+
+- `package.json` 的 `scripts`：无开发者明确要求不得改动
+- `sys.sql`：仅为基础库结构参考，只读不编辑
+
+## 配置与环境
+
+- 本地开发配置：`config.development.local.json5`
+- 基础配置模板：`config.development.json5` / `config.production.json5`
+
+## 功能开发流程
+
+1. 先查 `.cursor/skills/` 是否有任务拆分与细节（如 `brainstorming`、`writing-plans`）
+2. skill 未覆盖时，自行拆分任务与实现细节
+3. 不确定处询问开发者，勿自行假设
+
+## 代码索引维护
+
+大量代码变更后执行 `codegraph sync` 更新结构索引。
+
+## 详细文档
+
+完整结构与清单见项目根目录 `AGENTS.md`。

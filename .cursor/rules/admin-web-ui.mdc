@@ -1,0 +1,32 @@
+---
+description: 管理端前端 UI、列表页与菜单权限规范
+globs: admin-web/**/*
+alwaysApply: false
+---
+
+# 管理端前端规范
+
+## UI 开发
+
+写 UI 前先参考 `.cursor/skills/`（如 `frontend-design`、`ui-styling`、`ui-ux-pro-max`）。
+
+## 新增后台界面
+
+1. 用 MySQL MCP 连接当前开发库（见 `config.development.local.json5`）
+2. 在 `sys_menu` 新增菜单与按钮权限码（格式如 `模块:btn:add`）
+3. 前端页面放 `admin-web/src/views/`，API 放 `admin-web/src/api/`
+
+## 列表页
+
+- 筛选条件 + 表格列 + 可排序（时间、数字等）
+- 支持删除，删除进回收站
+- 回收站支持恢复与永久删除
+- 操作列可见按钮 ≤ 3，其余放入「更多」
+
+## 计划任务
+
+新增计划任务必须设置名称。
+
+## 参考
+
+列表页参考 `admin-web/src/views/system/tasks/index.vue`。

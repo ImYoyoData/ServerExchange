@@ -1,0 +1,227 @@
+<%#
+  弹窗表单（Vue3 + script setup + TS + Element Plus）
+  输出建议：@/views/{moduleName}/{table-kebab}-form.vue
+  依赖 Vue 3.4+ defineModel；字典：const dicts + onMounted(InitDict)；GetDict['xxx']
+  渲染上下文: className, tableName, moduleName, tableComment,
+  fields: { name, tsType, comment?, isPrimary?, isInsert?, isUpdate?, isMultiSelect?, formComponent?, dictCode? }[]
+%>
+<%
+const kebab = tableName.replace(/_/g, '-');
+function isPk(f) { return f.isPrimary === true || f.name === 'id'; }
+const insertFs = fields.filter(function (f) { return f.isInsert !== false && !isPk(f); });
+const updateFs = fields.filter(function (f) { return f.isUpdate !== false && !isPk(f); });
+function formComp(f) { return f.formComponent || 'input'; }
+function escapeForSingleQuotedJs(s) {
+  return String(s)
+    .replace(/\\/g, '\\\\')
+    .replace(/'/g, "\\'")
+    .replace(/\r/g, '\\r')
+    .replace(/\n/g, '\\n');
+}
+function collectFormPageDictCodes(allFields) {
+  const set = new Set();
+  for (let i = 0; i < allFields.length; i++) {
+    const f = allFields[i];
+    const c = formComp(f);
+    if (c !== 'select' && c !== 'radio' && c !== 'checkbox') continue;
+    const dc = (f.dictCode || '').trim();
+    if (dc) set.add(dc);
+  }
+  return Array.from(set).sort();
+}
+const formPageDictCodes = collectFormPageDictCodes(fields);
+-%>
+<template>
+  <el-form
+    ref="formRef"
+    :model="form"
+    label-width="100px"
+    class="<%- kebab %>-form"
+    @submit.prevent
+  >
+    <template v-if="mode === 'edit'">
+      <el-form-item label="ID" prop="id">
+        <el-input-number
+          v-model="form.id"
+          disabled
+          :controls="false"
+          class="w-full"
+        />
+      </el-form-item>
+    </template>
+
+<% insertFs.forEach(function (f) { -%>
+    <template v-if="mode === 'create'">
+<% if (formComp(f) === 'input') { -%>
+      <el-form-item label="<%- f.comment || f.name %>" prop="<%- f.name %>">
+        <el-input v-model="form.<%- f.name %>" clearable placeholder="请输入<%- f.comment || f.name %>" />
+      </el-form-item>
+<% } else if (formComp(f) === 'select') { -%>
+      <el-form-item label="<%- f.comment || f.name %>" prop="<%- f.name %>">
+        <el-select
+          v-model="form.<%- f.name %>"
+          clearable
+          filterable
+          placeholder="请选择"
+          <% if (f.isMultiSelect === true) { %>multiple collapse-tags collapse-tags-tooltip<% } %>
+          class="w-full"
+        >
+          <el-option
+            v-for="item in GetDict['<%- escapeForSingleQuotedJs((f.dictCode || '').trim()) %>']"
+            :key="item.value"
+            :label="item.label"
+            :value="item.value"
+          />
+        </el-select>
+      </el-form-item>
+<% } else if (formComp(f) === 'radio') { -%>
+      <el-form-item label="<%- f.comment || f.name %>" prop="<%- f.name %>">
+        <el-radio-group v-model="form.<%- f.name %>">
+          <el-radio
+            v-for="item in GetDict['<%- escapeForSingleQuotedJs((f.dictCode || '').trim()) %>']"
+            :key="item.value"
+            :value="item.value"
+          >{{ item.label }}</el-radio>
+        </el-radio-group>
+      </el-form-item>
+<% } else if (formComp(f) === 'checkbox') { -%>
+      <el-form-item label="<%- f.comment || f.name %>" prop="<%- f.name %>">
+        <el-checkbox-group v-model="form.<%- f.name %>">
+          <el-checkbox
+            v-for="item in GetDict['<%- escapeForSingleQuotedJs((f.dictCode || '').trim()) %>']"
+            :key="item.value"
+            :value="item.value"
+          >{{ item.label }}</el-checkbox>
+        </el-checkbox-group>
+      </el-form-item>
+<% } else if (formComp(f) === 'date') { -%>
+      <el-form-item label="<%- f.comment || f.name %>" prop="<%- f.name %>">
+        <el-date-picker
+          v-model="form.<%- f.name %>"
+          type="datetime"
+          value-format="YYYY-MM-DD HH:mm:ss"
+          placeholder="选择时间"
+          class="w-full"
+        />
+      </el-form-item>
+<% } else { -%>
+      <el-form-item label="<%- f.comment || f.name %>" prop="<%- f.name %>">
+        <el-input v-model="form.<%- f.name %>" clearable />
+      </el-form-item>
+<% } -%>
+    </template>
+
+<% }); -%>
+<% updateFs.forEach(function (f) { -%>
+    <template v-if="mode === 'edit'">
+<% if (formComp(f) === 'input') { -%>
+      <el-form-item label="<%- f.comment || f.name %>" prop="<%- f.name %>">
+        <el-input v-model="form.<%- f.name %>" clearable placeholder="请输入<%- f.comment || f.name %>" />
+      </el-form-item>
+<% } else if (formComp(f) === 'select') { -%>
+      <el-form-item label="<%- f.comment || f.name %>" prop="<%- f.name %>">
+        <el-select
+          v-model="form.<%- f.name %>"
+          clearable
+          filterable
+          placeholder="请选择"
+          <% if (f.isMultiSelect === true) { %>multiple collapse-tags collapse-tags-tooltip<% } %>
+          class="w-full"
+        >
+          <el-option
+            v-for="item in GetDict['<%- escapeForSingleQuotedJs((f.dictCode || '').trim()) %>']"
+            :key="item.value"
+            :label="item.label"
+            :value="item.value"
+          />
+        </el-select>
+      </el-form-item>
+<% } else if (formComp(f) === 'radio') { -%>
+      <el-form-item label="<%- f.comment || f.name %>" prop="<%- f.name %>">
+        <el-radio-group v-model="form.<%- f.name %>">
+          <el-radio
+            v-for="item in GetDict['<%- escapeForSingleQuotedJs((f.dictCode || '').trim()) %>']"
+            :key="item.value"
+            :value="item.value"
+          >{{ item.label }}</el-radio>
+        </el-radio-group>
+      </el-form-item>
+<% } else if (formComp(f) === 'checkbox') { -%>
+      <el-form-item label="<%- f.comment || f.name %>" prop="<%- f.name %>">
+        <el-checkbox-group v-model="form.<%- f.name %>">
+          <el-checkbox
+            v-for="item in GetDict['<%- escapeForSingleQuotedJs((f.dictCode || '').trim()) %>']"
+            :key="item.value"
+            :value="item.value"
+          >{{ item.label }}</el-checkbox>
+        </el-checkbox-group>
+      </el-form-item>
+<% } else if (formComp(f) === 'date') { -%>
+      <el-form-item label="<%- f.comment || f.name %>" prop="<%- f.name %>">
+        <el-date-picker
+          v-model="form.<%- f.name %>"
+          type="datetime"
+          value-format="YYYY-MM-DD HH:mm:ss"
+          placeholder="选择时间"
+          class="w-full"
+        />
+      </el-form-item>
+<% } else { -%>
+      <el-form-item label="<%- f.comment || f.name %>" prop="<%- f.name %>">
+        <el-input v-model="form.<%- f.name %>" clearable />
+      </el-form-item>
+<% } -%>
+    </template>
+
+<% }); -%>
+  </el-form>
+</template>
+
+<script setup lang="ts">
+import { watch, useTemplateRef, onMounted } from 'vue';
+import type { FormInstance } from 'element-plus';
+import { GetDict, InitDict } from "@/hooks/dict";
+
+<% if (formPageDictCodes.length === 0) { -%>
+/** 当前页面所用字典（与全局 InitDict 配置一致，可按需增删） */
+const dicts: string[] = []; // 当前页面所用字典
+<% } else { -%>
+/** 当前页面所用字典（与全局 InitDict 配置一致，可按需增删） */
+const dicts: string[] = [
+<% formPageDictCodes.forEach(function (code, i) { -%>
+  '<%- escapeForSingleQuotedJs(code) %>'<%- i < formPageDictCodes.length - 1 ? ',' : '' %>
+<% }); -%>
+];
+<% } -%>
+
+onMounted(() => {
+  InitDict(dicts);
+});
+
+const props = defineProps<{
+  mode: 'create' | 'edit';
+}>();
+
+/** 与父组件共用同一对象引用，便于 el-form 双向绑定 */
+const form = defineModel<Record<string, unknown>>({ required: true });
+
+const formRef = useTemplateRef<FormInstance>('formRef');
+
+watch(
+  () => props.mode,
+  () => {
+    formRef.value?.clearValidate();
+  },
+);
+
+defineExpose({
+  validate: () => formRef.value?.validate(),
+  resetFields: () => formRef.value?.resetFields(),
+});
+</script>
+
+<style scoped>
+.w-full {
+  width: 100%;
+}
+</style>
