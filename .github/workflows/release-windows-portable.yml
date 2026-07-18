@@ -48,6 +48,13 @@ jobs:
       - name: Install root dependencies
         run: pnpm install --frozen-lockfile
 
+      # pnpm 可能跳过原生模块脚本；显式重建，保证 import-sys-sql 可用
+      - name: Rebuild better-sqlite3
+        shell: pwsh
+        run: |
+          pnpm rebuild better-sqlite3
+          node -e "require('better-sqlite3')(':memory:').prepare('select 1').get(); console.log('better-sqlite3 ok')"
+
       - name: Install admin-web dependencies
         working-directory: admin-web
         run: pnpm install --frozen-lockfile

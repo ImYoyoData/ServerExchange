@@ -204,6 +204,48 @@ function run(cmd, opts = {}) {
   });
 }
 
+/** 确保 host 侧 better-sqlite3 原生模块可用（供 import-sys-sql 使用） */
+function ensureBetterSqlite3Native() {
+  try {
+    // eslint-disable-next-line import/no-extraneous-dependencies
+    require('better-sqlite3');
+    log('better-sqlite3 (host) OK');
+    return;
+  } catch (err) {
+    log(`better-sqlite3 (host) missing native binding: ${err.message}`);
+  }
+
+  log('rebuild better-sqlite3 for host Node');
+  try {
+    run('pnpm rebuild better-sqlite3');
+  } catch {
+    // 部分环境 rebuild 不够，再走包内 prebuild-install
+    const pkgDir = path.join(
+      root,
+      'node_modules',
+      'better-sqlite3',
+    );
+    if (fs.existsSync(pkgDir)) {
+      run('npm run install --prefix node_modules/better-sqlite3', {
+        env: { npm_config_build_from_source: 'false' },
+      });
+    } else {
+      throw new Error(
+        'better-sqlite3 package not found; run pnpm install first',
+      );
+    }
+  }
+
+  try {
+    require('better-sqlite3');
+    log('better-sqlite3 (host) OK after rebuild');
+  } catch (err) {
+    throw new Error(
+      `better-sqlite3 still unusable after rebuild: ${err.message}`,
+    );
+  }
+}
+
 function extractZip(zipPath, dest) {
   ensureDir(dest);
   execSync(
@@ -224,6 +266,10 @@ async function main() {
   });
   log('1b) nest build -> dist/');
   run('pnpm run build', { env: { NODE_ENV: 'production' } });
+
+  // import 脚本依赖本机 node_modules 里的 better-sqlite3 原生绑定
+  // CI（pnpm 默认可能跳过 build scripts）下常见缺 .node，先确保可用
+  ensureBetterSqlite3Native();
 
   if (!fs.existsSync(path.join(root, 'data', 'app.db'))) {
     log('2) import sys.sql -> data/app.db');
