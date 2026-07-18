@@ -24,15 +24,18 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # 版本必须与 package.json → packageManager 一致（当前 pnpm@10.32.1）
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
-        # 不写 version，自动使用 package.json 的 packageManager（pnpm@10.32.1）
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: pnpm
+          cache-dependency-path: |
+            pnpm-lock.yaml
+            admin-web/pnpm-lock.yaml
 
       - name: Cache portable Node / prebuilds
         uses: actions/cache@v4
@@ -43,41 +46,20 @@ jobs:
             portable-cache-${{ runner.os }}-
 
       - name: Install root dependencies
-        run: pnpm install --frozen-lockfile=false
+        run: pnpm install --frozen-lockfile
 
       - name: Install admin-web dependencies
         working-directory: admin-web
-        run: pnpm install --frozen-lockfile=false
+        run: pnpm install --frozen-lockfile
 
       - name: Ensure production .env for pack
         shell: pwsh
         run: |
           if (-not (Test-Path .env)) {
-            if (Test-Path .env.example) {
-              Copy-Item .env.example .env
-            } else {
-              @"
-          APP_NAME=Nest Admin Xo
-          DOMAIN=http://localhost:8080
-          DOMAIN_DEV=http://localhost:3500
-          VERSION=1.0.0
-          API_PREFIX=/api
-          JWT_EXPIRES_IN=2h
-          JWT_REFRESH_EXPIRES_IN=7d
-          JWT_SECRET=change-me-before-production-use-at-least-32-chars
-          RESPONSE_INTERCEPTOR=false
-          THROTTLE_GLOBAL=false
-          THROTTLE_TTL=60000
-          THROTTLE_LIMIT=120
-          SWAGGER_ENABLED=false
-          DB_ENTITY_PREFIX=
-          DB_DATE_STRINGS=true
-          DB_SYNCHRONIZE=false
-          DB_LOGGING=false
-          DB_LOGGING_TYPE=file
-          DB_LOGGING_TYPE_DEV=file
-          "@ | Set-Content -Path .env -Encoding utf8
+            if (-not (Test-Path .env.example)) {
+              throw "missing .env.example"
             }
+            Copy-Item .env.example .env
           }
 
       - name: Build & pack Windows portable
@@ -93,7 +75,8 @@ jobs:
           $tag = "v$ver.$env:GITHUB_RUN_NUMBER"
           $name = "ServerExchange-portable-windows-x64-$tag"
           $src = "release\ServerExchange-portable"
-          if (-not (Test-Path $src)) { throw "missing $src" }
+          if (-not (Test-Path "$src\start.bat")) { throw "pack output missing: $src\start.bat" }
+          if (-not (Test-Path "$src\node.exe")) { throw "pack output missing: $src\node.exe" }
           $zip = "release\$name.zip"
           if (Test-Path $zip) { Remove-Item $zip -Force }
           Compress-Archive -Path "$src\*" -DestinationPath $zip -CompressionLevel Optimal
@@ -121,5 +104,6 @@ jobs:
           draft: false
           prerelease: false
           generate_release_notes: true
+          fail_on_unmatched_files: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
